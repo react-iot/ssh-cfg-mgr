@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SSH Cfg Mgr</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">SSH Cfg Mgr</div>
+      <code id="path" class="path"></code>
+      <span id="badge" class="badge" hidden></span>
+      <span class="spacer"></span>
+      <button id="reload" type="button">Reload</button>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar">
+        <input id="search" type="search" placeholder="Filter hosts" autocomplete="off" spellcheck="false" />
+        <ul id="list" class="list" role="listbox" aria-label="Hosts"></ul>
+        <p id="count" class="count"></p>
+      </aside>
+
+      <section id="detail" class="detail" aria-live="polite"></section>
+    </main>
+  </body>
+</html>

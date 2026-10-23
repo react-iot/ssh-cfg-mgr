@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions for the main window. Keep this list short: the app edits ~/.ssh.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
