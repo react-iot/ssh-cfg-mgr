@@ -205,11 +205,12 @@ fn check(path: &Path) -> Result<(), String> {
         let _ = pipe.read_to_string(&mut stderr);
     }
     // ssh writes "<file>: line 2: Bad configuration option: x". The temp
-    // file name means nothing to the user.
-    let prefix = format!("{}: ", path.display());
+    // file name means nothing to the user. Match its name, not the whole
+    // path: OpenSSH for Windows writes the path with each \ doubled.
+    let marker = format!("{}: ", file_name(path));
     let message: Vec<&str> = stderr
         .lines()
-        .map(|line| line.strip_prefix(&prefix).unwrap_or(line))
+        .map(|line| line.split_once(&marker).map_or(line, |(_, rest)| rest))
         .filter(|line| !line.starts_with("terminating,"))
         .collect();
     Err(format!(
