@@ -274,6 +274,8 @@ button.with-icon { display: flex; align-items: center; gap: 6px; height: 30px; }
 .option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .option input { margin-top: 3px; accent-color: var(--accent); }
 
+/* Custom elements are inline by default. */
+:is(host-detail, raw-editor, settings-view, history-view) { display: block; }
 .detail { flex: 1; padding: 24px 28px; overflow-y: auto; }
 .detail-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
 .detail-head h1 { flex: 1; }

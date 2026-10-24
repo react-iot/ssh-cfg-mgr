@@ -117,7 +117,12 @@ npm run build                  # make an installer (.dmg, .deb, .AppImage, ...)
 cargo test                     # run all tests
 cargo clippy --all-targets     # lint
 cargo run --example list_hosts # list the hosts in your ~/.ssh/config
+node scripts/preview.js        # the UI in a browser, with a fake Tauri API
 ```
+
+The UI is native custom elements (light DOM, ES modules): `ui/store.js`
+holds the state and every call to Rust and emits `change`; `ui/main.js`
+draws the components in `ui/components/` from it.
 
 To try the app on a copy instead of your real config, set
 `SSH_CFG_MGR_CONFIG`:
