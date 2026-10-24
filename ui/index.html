@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SSH Config Manager</title>
     <link rel="stylesheet" href="style.css" />
+    <script src="builders.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -48,9 +49,6 @@
           </div>
         </div>
         <ul id="list" class="list" role="listbox" aria-label="Hosts"></ul>
-        <div class="sidebar-foot">
-          <p id="count" class="count"></p>
-        </div>
       </aside>
 
       <section class="detail">
@@ -59,11 +57,15 @@
       </section>
     </main>
 
+    <!-- Left part lines up with the sidebar, right part with the detail. -->
     <footer class="statusbar">
-      <code id="path" class="path"></code>
-      <span id="badge" class="badge" hidden></span>
-      <span class="spacer"></span>
-      <span id="sync" class="sync" role="status"></span>
+      <span id="count" class="count"></span>
+      <div class="status-file">
+        <code id="path" class="path"></code>
+        <span id="badge" class="badge" hidden></span>
+        <span class="spacer"></span>
+        <span id="sync" class="sync" role="status"></span>
+      </div>
     </footer>
 
     <datalist id="keywords"></datalist>

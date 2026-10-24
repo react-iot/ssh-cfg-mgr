@@ -83,7 +83,9 @@ body {
 .path { color: var(--muted); font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spacer { flex: 1; }
 
-.statusbar { display: flex; align-items: center; gap: 10px; padding: 4px 16px; border-top: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 12px; min-width: 0; }
+.statusbar { display: flex; align-items: stretch; border-top: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 12px; min-width: 0; }
+.statusbar .count { width: 300px; flex: none; padding: 5px 16px; border-right: 1px solid var(--border); }
+.status-file { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 5px 16px; }
 .statusbar .badge { padding: 0 8px; font-size: 11px; }
 .sync { white-space: nowrap; }
 .sync::before { content: "●"; margin-right: 6px; color: var(--success, #10b981); }
@@ -174,8 +176,7 @@ input.mono { font-family: var(--mono); font-size: 13px; }
 .menu button:hover, .menu button:focus-visible { background: var(--selected); color: var(--selected-text); outline: none; }
 
 .sidebar.locked .list,
-.sidebar.locked .sidebar-tools,
-.sidebar.locked .sidebar-foot { opacity: 0.5; pointer-events: none; }
+.sidebar.locked .sidebar-tools { opacity: 0.5; pointer-events: none; }
 
 .list { flex: 1; margin: 0; padding: 0 6px; list-style: none; overflow-y: auto; }
 
@@ -212,8 +213,6 @@ button.visibility:focus-visible { opacity: 1; }
 .text { display: flex; flex-direction: column; min-width: 0; }
 .sub { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.sidebar-foot { padding: 8px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
-.count { margin: 0; }
 
 button.icon-only { display: grid; place-items: center; padding: 0 8px; height: 30px; color: var(--muted); }
 button.with-icon { display: flex; align-items: center; gap: 6px; height: 30px; }
@@ -251,7 +250,7 @@ th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--bor
 tr:last-child td { border-bottom: none; }
 th { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--bg); }
 td:first-child { width: 220px; font-weight: 500; }
-td:last-child { font-family: var(--mono); word-break: break-all; }
+td:nth-child(2) { font-family: var(--mono); word-break: break-all; }
 
 /* A value looks like text; hover shows it can be clicked to edit. */
 td:has(.value-button, .value-editor) { padding: 3px 6px; }
@@ -277,6 +276,28 @@ select.value-editor { padding-right: 30px; }
 .toggle button:first-child { border-radius: 6px 0 0 6px; }
 .toggle button[aria-checked="true"] { position: relative; background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
 .toggle button:last-child { border-radius: 0; }
+
+/* Builder dialog. */
+dialog.builder { width: min(640px, 92vw); padding: 20px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35); }
+dialog.builder::backdrop { background: rgba(0, 0, 0, 0.35); }
+dialog.builder form { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+dialog.builder h2 { margin: 0; font-size: 16px; color: var(--heading); }
+.builder-rows { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.builder-row { display: flex; align-items: flex-end; gap: 8px; width: 100%; }
+.builder-row .field { flex: 1; font-weight: 500; font-size: 12px; }
+.builder-row .field input, .builder-row .field select { width: 100%; font-size: 13px; }
+.builder-row button.icon-only { height: 32px; }
+dialog.builder .preview { display: block; width: 100%; padding: 8px 10px; border-radius: 6px; background: var(--row-alt); font: 13px var(--mono); word-break: break-all; }
+dialog.builder .preview.invalid { color: var(--muted); font-family: var(--sans); }
+dialog.builder .form-actions { margin-top: 4px; }
+button:disabled { opacity: 0.5; cursor: default; }
+
+/* Per-row delete in the settings table: shown on hover; red when it asks
+   for the second click. */
+td.row-actions { width: 1%; padding: 3px 6px; white-space: nowrap; }
+td.row-actions button { opacity: 0; height: 26px; border-color: transparent; background: none; }
+tr:hover td.row-actions button, td.row-actions button:focus-visible, td.row-actions button.confirming { opacity: 1; }
+td.row-actions button.confirming { color: var(--danger); border-color: var(--danger); }
 
 textarea.raw { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font: 13px/1.5 var(--mono); tab-size: 4; resize: vertical; }
 textarea.raw:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

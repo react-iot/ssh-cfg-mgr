@@ -122,11 +122,23 @@ function valueEditor(keyword, current, onDone, onCancel) {
     }
   });
 
-  // Tick and cross as one joined control.
+  // Tick and cross as one joined control, after a builder button if the
+  // keyword's value has several parts.
+  const pair = make("div", "segmented confirm");
+  const builder = BUILDERS[keyword.toLowerCase()];
+  if (builder) {
+    pair.append(
+      iconButton(WRENCH, `Build the ${keyword} value`, () =>
+        openBuilder(keyword, builder, input.value, (built) => {
+          input.value = built;
+          input.focus();
+        }),
+      ),
+    );
+  }
   const tick = iconButton(TICK, `Save ${keyword}`, done);
   tick.classList.add("primary");
   const cross = iconButton(CROSS, "Cancel", onCancel);
-  const pair = make("div", "segmented confirm");
   pair.append(tick, cross);
   const line = make("div", "value-line");
   line.append(input, pair);
@@ -147,6 +159,8 @@ let confirmingDelete = false;
 let inlineRow = null;
 const PATTERN_ROW = "pattern";
 let addKeyword = "";
+// The settings row whose trash was clicked once, waiting for the second click.
+let deleteRow = null;
 
 // View preferences, kept per user in this app's local storage. Storage can
 // fail (private mode, cleared data); the defaults work without it.
@@ -456,6 +470,7 @@ function renderView(detail) {
   const table = make("table");
   const headRow = make("tr");
   headRow.append(make("th", "", "Keyword"), make("th", "", "Value"));
+  if (editable) headRow.append(make("th"));
   table.append(headRow);
   entry.settings.forEach((setting, i) => {
     const row = make("tr");
@@ -478,12 +493,29 @@ function renderView(detail) {
       // Click the value to change it.
       const value = button(setting.value, "value-button", () => {
         inlineRow = i;
+        deleteRow = null;
         render();
       });
       value.title = "Click to change";
       cell.append(value);
     }
     row.append(make("td", "", setting.keyword), cell);
+    if (editable) {
+      // Delete the row: the first click asks, the second deletes.
+      const actions = make("td", "row-actions");
+      const confirming = deleteRow === i;
+      const trash = iconButton(TRASH, confirming ? `Click again to delete ${setting.keyword}` : `Delete ${setting.keyword}`, () => {
+        if (confirming) {
+          saveSettings(entry, entry.settings.filter((_, j) => j !== i));
+        } else {
+          deleteRow = i;
+          render();
+        }
+      });
+      trash.classList.toggle("confirming", confirming);
+      actions.append(trash);
+      row.append(actions);
+    }
     table.append(row);
   });
   if (editable) table.append(addRow(entry));
@@ -517,6 +549,7 @@ function addRow(entry) {
   }
   const keywordCell = make("td");
   keywordCell.append(pick);
+  valueCell.colSpan = 2;
   row.append(keywordCell, valueCell);
   return row;
 }
@@ -542,6 +575,7 @@ async function saveSettings(entry, settings, pattern = entry.name) {
     });
     inlineRow = null;
     addKeyword = "";
+    deleteRow = null;
     applyResult(result, "Saved.");
   } catch (error) {
     showNotice(String(error), "error");
@@ -549,6 +583,100 @@ async function saveSettings(entry, settings, pattern = entry.name) {
 }
 
 const TICK = "M3 8.5l3.2 3.2L13 4.8";
+const WRENCH = "M10.5 2.2a3.3 3.3 0 0 0-3.9 4.2L2.4 10.6a1.4 1.4 0 0 0 2 2l4.2-4.2a3.3 3.3 0 0 0 4.2-3.9l-2 2-1.8-.5-.5-1.8z";
+
+// A dialog that builds a value from its parts (see builders.js). "Use"
+// puts the value in the field; the field's tick still saves it.
+function openBuilder(keyword, builder, current, onUse) {
+  const items = current.trim() ? builder.parse(current) : [];
+  const blank = () => Object.fromEntries(builder.fields.map((f) => [f.key, f.choices ? f.choices[0] : ""]));
+  if (!items.length) items.push(blank());
+
+  const dialog = make("dialog", "builder");
+  const form = make("form");
+  form.method = "dialog";
+  const preview = make("code", "preview");
+  const useButton = make("button", "primary", "Use");
+  useButton.value = "use";
+
+  const update = () => {
+    const built = builder.build(items);
+    preview.textContent = built ?? "Fill in the required fields.";
+    preview.classList.toggle("invalid", built === null);
+    useButton.disabled = built === null;
+  };
+
+  const rows = make("div", "builder-rows");
+  const drawRows = () => {
+    rows.replaceChildren();
+    items.forEach((item, i) => {
+      const row = make("div", "builder-row");
+      for (const field of builder.fields) {
+        const label = make("label", "field");
+        label.append(make("span", "", field.optional ? `${field.label} (optional)` : field.label));
+        let input;
+        if (field.choices) {
+          input = make("select");
+          for (const c of field.choices) input.append(Object.assign(make("option", "", c), { value: c }));
+        } else {
+          input = make("input", "mono");
+          input.placeholder = field.placeholder ?? "";
+          input.spellcheck = false;
+          if (field.number) input.inputMode = "numeric";
+        }
+        input.value = item[field.key] ?? "";
+        input.addEventListener("input", () => {
+          item[field.key] = input.value.trim();
+          update();
+        });
+        label.append(input);
+        row.append(label);
+      }
+      if (builder.list) {
+        const up = iconButton("M8 12V4M4.5 7.5 8 4l3.5 3.5", "Move up", () => {
+          [items[i - 1], items[i]] = [items[i], items[i - 1]];
+          drawRows();
+          update();
+        });
+        up.disabled = i === 0;
+        const remove = iconButton(CROSS, "Remove", () => {
+          items.splice(i, 1);
+          drawRows();
+          update();
+        });
+        row.append(up, remove);
+      }
+      rows.append(row);
+    });
+  };
+  drawRows();
+
+  form.append(make("h2", "", `${builder.title} · ${keyword}`), make("p", "hint", builder.help), rows);
+  if (builder.list) {
+    form.append(
+      button("Add another", "", () => {
+        items.push(blank());
+        drawRows();
+        update();
+        rows.lastChild.querySelector("input, select").focus();
+      }),
+    );
+  }
+  const actions = make("div", "form-actions");
+  const cancel = make("button", "", "Cancel");
+  cancel.value = "cancel";
+  actions.append(useButton, cancel);
+  form.append(make("span", "col-head", "Value"), preview, actions);
+  dialog.append(form);
+  dialog.addEventListener("close", () => {
+    if (dialog.returnValue === "use") onUse(builder.build(items));
+    dialog.remove();
+  });
+  document.body.append(dialog);
+  update();
+  dialog.showModal();
+  dialog.querySelector("input, select")?.focus();
+}
 const CROSS = "M4 4l8 8M12 4l-8 8";
 const TRASH ="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5";
 
@@ -837,6 +965,7 @@ function select(id) {
   if (id !== selected) {
     inlineRow = null;
     addKeyword = "";
+    deleteRow = null;
   }
   selected = id;
   confirmingDelete = false;
@@ -909,6 +1038,7 @@ async function checkForChanges() {
     confirmingDelete = false;
     // Row numbers may have moved; close the value editor.
     inlineRow = null;
+    deleteRow = null;
     showConfig();
     setSync(`Reloaded at ${now()} · changed on disk`, "changed");
     showNotice("The file changed on disk. The list was reloaded.");
