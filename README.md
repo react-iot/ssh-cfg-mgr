@@ -3,9 +3,34 @@
 A free, open-source desktop app for macOS and Linux that manages your
 `~/.ssh/config` file and SSH keys. Made by ReactIoT.
 
-**Status:** early development. The app shows your hosts. It cannot edit them yet.
+**Status:** early development. You can view, add, edit and delete `Host`
+and `Match` blocks. Global settings are read-only for now.
 
 ![SSH Cfg Mgr showing a list of hosts](docs/screenshot.png)
+
+![Editing a host](docs/screenshot-edit.png)
+
+## How a save works
+
+The app never leaves your config half-written or broken:
+
+1. It checks that the file did not change after you opened it (for
+   example, in an editor). If it changed, nothing is saved.
+2. It writes the new text to a temporary file in the same folder, with the
+   same permissions as the old file (`0600` for a new file).
+3. It runs `ssh -G -F <temp file>`. If OpenSSH rejects the file, nothing
+   is saved and the error is shown.
+4. It copies the old file to `~/.ssh/ssh-cfg-mgr-backups/` (the newest 50
+   backups are kept).
+5. It renames the temporary file over the config. A rename is atomic.
+
+Only the lines you changed are different. Comments, blank lines,
+indentation and the order of lines stay. If `~/.ssh/config` is a symlink
+(for example, from a dotfiles manager), the app writes to the real file and
+keeps the link.
+
+New hosts go before `Host *`, because OpenSSH uses the first value it
+finds for each keyword.
 
 ## Goals
 
@@ -46,11 +71,12 @@ cargo clippy --all-targets     # lint
 cargo run --example list_hosts # list the hosts in your ~/.ssh/config
 ```
 
-The app and the `list_hosts` example only read your file. They do not
-write to it. To open another file, set `SSH_CFG_MGR_CONFIG`:
+To try the app on a copy instead of your real config, set
+`SSH_CFG_MGR_CONFIG`:
 
 ```sh
-SSH_CFG_MGR_CONFIG="$PWD/my_test_config" npm run dev
+cp ~/.ssh/config /tmp/test_config
+SSH_CFG_MGR_CONFIG=/tmp/test_config npm run dev
 ```
 
 ## Licence
