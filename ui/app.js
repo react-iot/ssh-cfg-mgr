@@ -889,8 +889,15 @@ function renderRaw(detail) {
       save();
     }
   });
-  form.append(make("h1", "", `Edit ${editing.kind} ${editing.name}`));
-  form.append(make("p", "hint", "The block's lines as they are in the file. Blank lines and comments after the block are not shown, and stay as they are."));
+  // Heading with Save and Cancel on the right, as in the host view.
+  const head = make("div", "detail-head");
+  const actions = make("div", "actions");
+  const saveButton = make("button", "primary", "Save");
+  saveButton.type = "submit";
+  actions.append(button("Cancel", "", cancelEdit), saveButton);
+  head.append(make("h1", "", `Edit ${editing.kind} ${editing.name}`), actions);
+  form.append(head);
+
   const text = make("textarea", "raw");
   text.value = editing.text;
   text.spellcheck = false;
@@ -898,13 +905,9 @@ function renderRaw(detail) {
   text.rows = Math.min(30, Math.max(6, editing.text.split("\n").length + 1));
   text.addEventListener("input", () => (editing.text = text.value));
   form.append(text);
-
-  const actions = make("div", "form-actions");
-  const saveButton = make("button", "primary", "Save");
-  saveButton.type = "submit";
-  actions.append(saveButton, button("Cancel", "", cancelEdit));
-  actions.append(make("span", "hint", "⌘↩ saves. OpenSSH checks the whole file before it is saved. A backup of the old file is kept."));
-  form.append(actions);
+  form.append(
+    make("p", "hint", "The block's lines as they are in the file. Blank lines and comments after the block are not shown, and stay as they are. ⌘↩ saves. OpenSSH checks the whole file before it is saved, and a backup of the old file is kept."),
+  );
   detail.append(form);
 }
 
