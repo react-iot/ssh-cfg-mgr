@@ -65,10 +65,16 @@ const DEFAULT_KEYS = ["id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed2
 // ponytail: other % tokens (%h, %r, ...) are left as written, so such a
 // path matches no key.
 function keyPath(value, home) {
-  let path = value.replace(/^"(.*)"$/, "$1").replaceAll("%d", home);
-  if (path.startsWith("~/")) path = home + path.slice(1);
+  let path = slashes(value.replace(/^"(.*)"$/, "$1").replaceAll("%d", home));
+  if (path.startsWith("~/")) path = slashes(home) + path.slice(1);
   return path.replace(/\.pub$/, "");
 }
+
+// Windows paths with / instead of \, so they compare with ~/ paths. OpenSSH
+// for Windows reads both. On macOS and Linux a \ is part of a file name.
+const WINDOWS = navigator.userAgent.includes("Windows");
+const slashes = (path) => (WINDOWS ? path.replaceAll("\\", "/") : path);
+const fileName = (path) => slashes(path).split("/").pop();
 
 class Store extends EventTarget {
   prefs = prefs;
@@ -227,7 +233,7 @@ class Store extends EventTarget {
 
   // The first free name for a new key: id_ed25519, id_ed25519_2, ...
   freeKeyName() {
-    const taken = new Set((this.keys ?? []).map((k) => k.path.split("/").pop()));
+    const taken = new Set((this.keys ?? []).map((k) => fileName(k.path)));
     let name = "id_ed25519";
     for (let n = 2; taken.has(name); n++) name = `id_ed25519_${n}`;
     return name;
@@ -250,10 +256,10 @@ class Store extends EventTarget {
     const entries = this.entries().filter((e) => e.id === GLOBAL_ID || e.enabled !== false);
     return (this.keys ?? []).map((key) => ({
       ...key,
-      name: key.path.split("/").pop(),
-      isDefault: DEFAULT_KEYS.includes(key.path.split("/").pop()),
+      name: fileName(key.path),
+      isDefault: DEFAULT_KEYS.includes(fileName(key.path)),
       users: entries.filter((e) =>
-        e.settings.some((s) => s.keyword.toLowerCase() === "identityfile" && keyPath(s.value, this.config.home) === key.path),
+        e.settings.some((s) => s.keyword.toLowerCase() === "identityfile" && keyPath(s.value, this.config.home) === slashes(key.path)),
       ),
     }));
   }
@@ -593,14 +599,15 @@ class Store extends EventTarget {
   // not loaded (no build step), so call its command directly. Returns a path
   // with the home folder written as ~, or null if cancelled.
   async pickFile(keyword, current) {
-    const home = this.config.home;
+    const home = slashes(this.config.home);
     const expand = (p) => (home && p.startsWith("~/") ? home + p.slice(1) : p);
     const folder = current ? expand(current).replace(/\/[^/]*$/, "") : `${home}/.ssh`;
     try {
-      const path = await invoke("plugin:dialog|open", {
+      let path = await invoke("plugin:dialog|open", {
         options: { title: `Choose a file for ${keyword}`, defaultPath: folder || undefined },
       });
       if (typeof path !== "string") return null;
+      path = slashes(path);
       return home && path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
     } catch (error) {
       this.notice(String(error), "error");

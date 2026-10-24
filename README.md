@@ -12,11 +12,11 @@
 [![CI](https://github.com/react-iot/ssh-cfg-mgr/actions/workflows/ci.yml/badge.svg)](https://github.com/react-iot/ssh-cfg-mgr/actions/workflows/ci.yml)
 [![Release](https://github.com/react-iot/ssh-cfg-mgr/actions/workflows/release.yml/badge.svg)](https://github.com/react-iot/ssh-cfg-mgr/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/react-iot/ssh-cfg-mgr?label=version)](https://github.com/react-iot/ssh-cfg-mgr/releases/latest)
-[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-blue)](https://github.com/react-iot/ssh-cfg-mgr/releases/latest)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-blue)](https://github.com/react-iot/ssh-cfg-mgr/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%99%A5-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/react-iot)
 
-A free, open-source desktop app for macOS and Linux that manages your
+A free, open-source desktop app for macOS, Linux and Windows that manages your
 `~/.ssh/config` file and SSH keys. Made by [ReactIoT](https://reactiot.com.au).
 
 **[Download](https://github.com/react-iot/ssh-cfg-mgr/releases/latest)** ·
@@ -146,9 +146,14 @@ Download the file for your system from
 | Debian, Ubuntu | `.deb` | `sudo apt install ./<file>.deb` |
 | Fedora, RHEL, openSUSE | `.rpm` | `sudo dnf install ./<file>.rpm` |
 | Other Linux | `.AppImage` | `chmod +x` the file, then run it |
+| Windows 10 and 11 (x64) | `.msi` or `-setup.exe` | Run it. The app is not signed yet, so SmartScreen asks first: More info > Run anyway |
 
 Linux files are for x86_64 (`amd64`, `x86_64`) and ARM64 (`arm64`,
 `aarch64`). Choose the one for your CPU (`uname -m`).
+
+On Windows the app needs the OpenSSH client (`ssh.exe`, `ssh-keygen.exe`).
+It comes with Windows 10 and 11; if it is missing, add it in Settings >
+System > Optional features > OpenSSH Client.
 
 To make a release, see [docs/RELEASING.md](docs/RELEASING.md).
 

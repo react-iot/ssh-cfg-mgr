@@ -7,6 +7,7 @@
 | `macos-latest` | `.app` and `.dmg`, universal (Apple silicon and Intel) |
 | `ubuntu-22.04` | `.AppImage`, `.deb`, `.rpm` for x86_64 |
 | `ubuntu-22.04-arm` | `.AppImage`, `.deb`, `.rpm` for ARM64 |
+| `windows-latest` | `.msi` and NSIS `-setup.exe` for x64. Not signed yet |
 
 ## Make a release
 
@@ -32,7 +33,8 @@ gh workflow run release.yml --ref <branch>
 ```
 
 The files are kept as workflow artifacts (`bundles-macos-latest`,
-`bundles-ubuntu-22.04`, `bundles-ubuntu-22.04-arm`). No release is made.
+`bundles-ubuntu-22.04`, `bundles-ubuntu-22.04-arm`, `bundles-windows-latest`).
+No release is made.
 
 ## macOS signing and notarization
 

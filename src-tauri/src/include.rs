@@ -225,7 +225,15 @@ fn in_ssh_folder(real: &Path, home: &Path) -> bool {
 /// `path` with the home folder written as `~`.
 fn tilde(path: &Path, home: &Path) -> String {
     match path.strip_prefix(home) {
-        Ok(rest) if !home.as_os_str().is_empty() => format!("~/{}", rest.display()),
+        Ok(rest) if !home.as_os_str().is_empty() => {
+            let text = format!("~/{}", rest.display());
+            // ~/ paths use /, as in ssh_config. On Unix a \ is part of a name.
+            if cfg!(windows) {
+                text.replace('\\', "/")
+            } else {
+                text
+            }
+        }
         _ => path.display().to_string(),
     }
 }
@@ -292,6 +300,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn files_outside_ssh_folder_are_read_only() {
         let home = home("outside");
         fs::create_dir_all(home.join(".orbstack/ssh")).unwrap();

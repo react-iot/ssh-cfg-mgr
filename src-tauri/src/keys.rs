@@ -5,11 +5,11 @@
 //! a passphrase on a command line can be read by other users on Linux
 //! (`/proc/<pid>/cmdline`).
 
+use crate::store::{create_new, private_dir};
 use serde::Serialize;
 use std::{
-    fs::{self, DirBuilder, OpenOptions},
+    fs,
     io::{Read, Write},
-    os::unix::fs::{DirBuilderExt, OpenOptionsExt},
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -157,19 +157,10 @@ pub fn generate(dir: &Path, name: &str, comment: &str, passphrase: &str) -> Resu
     let private_text = key.to_openssh(LineEnding::LF).map_err(fail)?;
 
     let io = |e: std::io::Error| format!("Cannot write the key in {}: {e}", dir.display());
-    DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(dir)
-        .map_err(io)?;
+    private_dir(dir).map_err(io)?;
     // create_new: fails if the file appeared since the check above.
     let write = |path: &Path, mode: u32, text: &str| {
-        OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(mode)
-            .open(path)
-            .and_then(|mut f| f.write_all(text.as_bytes()))
+        create_new(path, mode).and_then(|mut f| f.write_all(text.as_bytes()))
     };
     write(&private, 0o600, &private_text).map_err(io)?;
     if let Err(e) = write(&public, 0o644, &format!("{public_text}\n")) {
@@ -182,7 +173,6 @@ pub fn generate(dir: &Path, name: &str, comment: &str, passphrase: &str) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
 
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("ssh-cfg-mgr-{tag}-{}", std::process::id()));
@@ -244,7 +234,7 @@ mod tests {
 
         let names: Vec<_> = keys
             .iter()
-            .map(|k| k.path.rsplit('/').next().unwrap())
+            .map(|k| Path::new(&k.path).file_name().unwrap().to_str().unwrap())
             .collect();
         assert_eq!(names, ["id_test", "lone", "other"]);
         let k = &keys[0];
@@ -269,8 +259,13 @@ mod tests {
         let dir = temp_dir("gen");
         let plain = generate(&dir, "id_plain", "me@test", "").unwrap();
         let locked = generate(&dir, "id_locked", "", "two words").unwrap();
-        let mode = |name: &str| fs::metadata(dir.join(name)).unwrap().permissions().mode() & 0o777;
-        let modes = (mode("id_plain"), mode("id_plain.pub"));
+        #[cfg(unix)]
+        let modes = {
+            use std::os::unix::fs::PermissionsExt;
+            let mode =
+                |name: &str| fs::metadata(dir.join(name)).unwrap().permissions().mode() & 0o777;
+            (mode("id_plain"), mode("id_plain.pub"))
+        };
         let again = generate(&dir, "id_plain", "", "");
         let bad = generate(&dir, "../x", "", "");
         // The passphrase opens the key, so it was encrypted with it.
@@ -285,6 +280,7 @@ mod tests {
         let (right, wrong) = (derive("two words"), derive("wrong"));
         fs::remove_dir_all(&dir).unwrap();
 
+        #[cfg(unix)]
         assert_eq!(modes, (0o600, 0o644));
         assert!(again.unwrap_err().contains("already exists"));
         assert!(bad.is_err());

@@ -1,5 +1,5 @@
-# Build the app for macOS (universal) and Linux x86_64 + ARM64 (AppImage,
-# .deb, .rpm).
+# Build the app for macOS (universal), Linux x86_64 + ARM64 (AppImage,
+# .deb, .rpm) and Windows x64 (.msi, setup .exe).
 #
 # Every run builds and keeps the files as workflow artifacts:
 # - Push a tag vX.Y.Z (equal to "version" in src-tauri/tauri.conf.json):
@@ -9,7 +9,8 @@
 #   changes this file: build only. Use this to test a branch.
 #
 # macOS signing and notarization use repository secrets; see docs/RELEASING.md.
-# Without them the macOS build is not signed.
+# Without them the macOS build is not signed. The Windows build is not
+# signed yet (Windows SmartScreen warns on first run).
 name: Release
 
 on:
@@ -32,7 +33,13 @@ jobs:
             args: ""
           - platform: ubuntu-22.04-arm
             args: ""
+          - platform: windows-latest
+            args: ""
     runs-on: ${{ matrix.platform }}
+    # The run steps are bash, also on Windows (Git Bash on the runner).
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v5
 
@@ -149,6 +156,8 @@ jobs:
             target/release/bundle/appimage/*.AppImage
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*.exe
           if-no-files-found: error
 
   release:
@@ -171,5 +180,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "SSH Config Manager $GITHUB_REF_NAME" \
             --generate-notes \
-            --notes "Downloads for macOS (universal: Apple silicon and Intel) and Linux x86_64 and ARM64 (AppImage, .deb, .rpm).
+            --notes "Downloads for macOS (universal: Apple silicon and Intel), Linux x86_64 and ARM64 (AppImage, .deb, .rpm) and Windows x64 (.msi or setup .exe; not signed yet, so Windows SmartScreen asks before the first run).
           See the README for how to install."
