@@ -1019,7 +1019,7 @@ function applyResult(result, message) {
   selected = result.selected === null ? null : String(result.selected);
   render();
   showNotice(result.backup ? `${message} Backup: ${result.backup}` : message);
-  setSync(`Saved at ${now()} · watching for changes`);
+  setSync("Monitoring changes", `Saved at ${now()}. Watching the file for changes.`);
 }
 
 async function save() {
@@ -1101,14 +1101,14 @@ async function load() {
     config = await invoke("load_config");
   } catch (error) {
     showNotice(String(error), "error");
-    setSync("Cannot read the file", "error");
+    setSync("Cannot read file", `${now()}: the file could not be read.`, "error");
     return;
   }
 
   editing = null;
   confirmingDelete = false;
   showConfig();
-  setSync(`Loaded at ${now()} · watching for changes`);
+  setSync("Monitoring changes", `Loaded at ${now()}. Watching the file for changes.`);
 }
 
 function showConfig() {
@@ -1141,12 +1141,12 @@ async function checkForChanges() {
     // A save finished while we read: its result is newer than ours.
     if (config !== before) return;
     if (fresh.revision === config.revision) {
-      setSync(`Watching for changes · checked ${now()}`);
+      setSync("Monitoring changes", `Last checked at ${now()}. No changes.`);
       return;
     }
     if (editing) {
       // Keep the form. A save now would fail, so say so once.
-      setSync(`Changed on disk at ${now()} · not reloaded while you edit`, "changed");
+      setSync("Changed on disk", `Changed on disk at ${now()}. Not reloaded while you edit.`, "changed");
       if (warnedRevision !== fresh.revision) {
         warnedRevision = fresh.revision;
         showNotice("The file changed on disk. Your changes cannot be saved. Copy what you need, click Cancel, and edit again.", "error");
@@ -1164,11 +1164,11 @@ async function checkForChanges() {
     deleteRow = null;
     inlineValue = null;
     showConfig();
-    setSync(`Reloaded at ${now()} · changed on disk`, "changed");
+    setSync("Reloaded", `Changed on disk; reloaded at ${now()}.`, "changed");
     showNotice("The file changed on disk. The list was reloaded.");
   } catch {
     // The next check tries again. Reload shows the error.
-    setSync(`Cannot read the file · retrying`, "error");
+    setSync("Cannot read file", `${now()}: the file could not be read. Trying again.`, "error");
   } finally {
     checking = false;
   }
@@ -1177,9 +1177,11 @@ async function checkForChanges() {
 const now = () => new Date().toLocaleTimeString();
 
 // The file-watch state, in the status bar.
-function setSync(text, kind = "") {
+// A short label; the time and details are in the tooltip.
+function setSync(label, detail, kind = "") {
   const sync = el("sync");
-  sync.textContent = text;
+  sync.textContent = label;
+  sync.title = detail;
   sync.className = `sync ${kind}`;
 }
 
