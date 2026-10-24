@@ -305,10 +305,11 @@ tr:hover .has-options .hover-options { display: flex; }
 .hover-options button:last-child { border-radius: 0 6px 6px 0; }
 
 /* History: backups on the left, what a restore would change on the right. */
-.history { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }
+.history { display: grid; grid-template-columns: 270px 1fr; gap: 16px; align-items: start; }
 .history-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .history-list li + li { border-top: 1px solid var(--border); }
-.history-list button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 7px 10px; border: none; border-radius: 0; background: none; text-align: left; font-size: 13px; }
+/* One line: time on the left, size on the right. */
+.history-list button { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; width: 100%; white-space: nowrap; padding: 7px 10px; border: none; border-radius: 0; background: none; text-align: left; font-size: 13px; }
 .history-list button:hover { background: var(--row-hover); }
 .history-list button.selected { background: var(--selected); color: var(--selected-text); }
 .history-list button.selected .sub { color: inherit; opacity: 0.8; }
