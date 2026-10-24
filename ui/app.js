@@ -103,14 +103,15 @@ const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitiv
 // Blocks in display order, as [group name, entries] pairs. Global settings
 // come first with no group, blocks with no group come last.
 function grouped(blocks) {
-  if (prefs.sort === "name") blocks = [...blocks].sort((a, b) => byName(a.name, b.name));
+  const dir = { asc: 1, desc: -1 }[prefs.sort];
+  if (dir) blocks = [...blocks].sort((a, b) => dir * byName(a.name, b.name));
   const groups = new Map();
   for (const entry of blocks) {
     if (!groups.has(entry.group)) groups.set(entry.group, []);
     groups.get(entry.group).push(entry);
   }
   const named = [...groups.keys()].filter((g) => g);
-  if (prefs.sort === "name") named.sort(byName);
+  if (dir) named.sort((a, b) => dir * byName(a, b));
   return [...named, ""].filter((g) => groups.has(g)).map((g) => [g, groups.get(g)]);
 }
 
@@ -481,18 +482,43 @@ el("search").addEventListener("keydown", (event) => {
     el("filter").focus();
   }
 });
-for (const [key, id] of [["sort", "sort"], ["groupMode", "group-mode"]]) {
-  const select = el(id);
-  // An unknown stored value falls back to the first option.
-  if ([...select.options].some((o) => o.value === prefs[key])) select.value = prefs[key];
-  else prefs[key] = select.value;
-  select.addEventListener("change", () => {
-    prefs[key] = select.value;
-    savePrefs();
-    // A selected block can change group, but it stays selected.
-    if (config) render();
-  });
+// The sort button steps through these, then starts again.
+const SORTS = [
+  { value: "file", label: "File order" },
+  { value: "asc", label: "A–Z" },
+  { value: "desc", label: "Z–A" },
+];
+
+function showSort() {
+  const sort = SORTS.find((s) => s.value === prefs.sort) ?? SORTS[0];
+  prefs.sort = sort.value;
+  el("sort-label").textContent = sort.label;
+  el("sort").title = `Sort: ${sort.label}. Click to change.`;
+  el("sort").setAttribute("aria-label", el("sort").title);
 }
+
+function changed() {
+  savePrefs();
+  // A selected block can change group, but it stays selected.
+  if (config) render();
+}
+
+showSort();
+el("sort").addEventListener("click", () => {
+  const next = (SORTS.findIndex((s) => s.value === prefs.sort) + 1) % SORTS.length;
+  prefs.sort = SORTS[next].value;
+  showSort();
+  changed();
+});
+
+const groupMode = el("group-mode");
+// An unknown stored value falls back to the first option.
+if ([...groupMode.options].some((o) => o.value === prefs.groupMode)) groupMode.value = prefs.groupMode;
+else prefs.groupMode = groupMode.value;
+groupMode.addEventListener("change", () => {
+  prefs.groupMode = groupMode.value;
+  changed();
+});
 el("reload").addEventListener("click", () => {
   clearNotice();
   load();

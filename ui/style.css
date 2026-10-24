@@ -100,8 +100,8 @@ button.icon:hover { color: var(--danger); border-color: var(--danger); }
 .segmented > :first-child { border-radius: 6px 0 0 6px; }
 .segmented > :last-child { border-radius: 0 6px 6px 0; }
 .segmented > :hover, .segmented > :focus-visible { position: relative; }
-.segmented select { flex: 1; }
 .segmented button { display: grid; place-items: center; padding: 0 11px; color: var(--muted); }
+.segmented button.sort { flex: 1; display: flex; justify-content: flex-start; gap: 8px; color: var(--text); }
 .segmented button[aria-expanded="true"] { color: var(--accent-ink); background: var(--accent-soft); }
 button.add { font-size: 20px; font-weight: 500; line-height: 1; color: var(--accent-ink); }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
