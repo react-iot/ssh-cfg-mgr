@@ -7,9 +7,24 @@ A free, open-source desktop app for macOS and Linux that manages your
 and `Match` blocks, and sort and group them. Global settings are read-only
 for now.
 
-![SSH Cfg Mgr showing a list of hosts](docs/screenshot.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/ui-dark.svg" />
+  <img src="docs/ui-light.svg" alt="SSH Config Manager: hosts in groups, a turned-off host, a Match block and an included file on the left; the settings of host web-1 on the right" />
+</picture>
 
-![Editing a host](docs/screenshot-edit.png)
+Edit a value in place. Values with several parts, such as `LocalForward`,
+have a builder:
+
+![The LocalForward builder dialog over the host's settings](docs/ui-builder.svg)
+
+Every save makes a backup. History shows what restoring one would change:
+
+![History: backups on the left, a line diff on the right](docs/ui-history.svg)
+
+![Settings: theme, how new groups are saved, and history](docs/ui-settings.svg)
+
+The images are made from the app with made-up data (`example.com` names
+and documentation IP addresses).
 
 ## How a save works
 
