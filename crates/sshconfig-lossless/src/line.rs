@@ -188,6 +188,10 @@ impl Line {
         matches!(self.kind, LineKind::Blank(_))
     }
 
+    pub fn is_comment(&self) -> bool {
+        matches!(self.kind, LineKind::Comment(_))
+    }
+
     /// True for `Host` and `Match` lines, which start a new block.
     pub(crate) fn starts_block(&self) -> bool {
         self.directive()
