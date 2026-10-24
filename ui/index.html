@@ -17,13 +17,21 @@
     </header>
 
     <main class="layout">
-      <aside class="sidebar">
-        <input id="search" type="search" placeholder="Filter hosts" autocomplete="off" spellcheck="false" />
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-tools">
+          <input id="search" type="search" placeholder="Filter hosts" autocomplete="off" spellcheck="false" />
+          <button id="new-host" type="button" class="primary">New host</button>
+        </div>
         <ul id="list" class="list" role="listbox" aria-label="Hosts"></ul>
         <p id="count" class="count"></p>
       </aside>
 
-      <section id="detail" class="detail" aria-live="polite"></section>
+      <section class="detail">
+        <p id="notice" class="notice" role="status" hidden></p>
+        <div id="detail" aria-live="polite"></div>
+      </section>
     </main>
+
+    <datalist id="keywords"></datalist>
   </body>
 </html>
