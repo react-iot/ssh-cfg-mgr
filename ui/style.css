@@ -216,6 +216,7 @@ input.mono { font-family: var(--mono); font-size: 13px; }
 /* Included files: a path, so no capitals; long paths are cut with "…". */
 .include-head .section-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; font-family: var(--mono); font-weight: 500; }
 .include-head .group-toggle { min-width: 0; }
+.section-icon { flex: none; }
 .list li.include-note { padding: 4px 10px 8px; color: var(--muted); font-size: 12px; cursor: default; }
 .list li.include-note:hover { background: none; }
 .group-count { margin-left: auto; font-weight: 500; letter-spacing: 0; }

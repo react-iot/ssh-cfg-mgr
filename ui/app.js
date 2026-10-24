@@ -368,7 +368,7 @@ function renderList() {
     const closed = !filter && prefs.collapsed.includes(key);
     // Files in ~/.ssh are shown by their name there; others by full path.
     const short = file.path.startsWith("~/.ssh/") ? file.path.slice("~/.ssh/".length) : file.path;
-    const head = sectionHead(`INC: ${short}`, key, members.length, closed);
+    const head = sectionHead(short, key, members.length, closed, FILE_ICON);
     head.classList.add("include-head");
     head.title = `${file.path}: from "Include ${file.pattern}" in ${file.from}${file.condition ? `, only for ${file.condition}` : ""}. Read-only.`;
     list.append(head);
@@ -390,8 +390,11 @@ function renderList() {
     : `${plural(hosts, "host")}, ${plural(matches, "match block")}${included ? `, ${included} included` : ""}`;
 }
 
+const FILE_ICON = "M4 1.5h5L12.5 5v9a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5zM9 1.5V5h3.5";
+
 // A section header that opens and closes; `key` is remembered when closed.
-function sectionHead(label, key, count, closed) {
+// `icon` (an SVG path) goes before the label.
+function sectionHead(label, key, count, closed, icon = null) {
   const head = make("li", "group-head");
   head.setAttribute("role", "presentation");
   const toggle = button("", "group-toggle", () => {
@@ -400,7 +403,16 @@ function sectionHead(label, key, count, closed) {
     renderList();
   });
   toggle.setAttribute("aria-expanded", String(!closed));
-  toggle.append(chevron(), make("span", "section-label", label), make("span", "group-count", String(count)));
+  toggle.append(chevron());
+  if (icon) {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    for (const [k, v] of Object.entries({ class: "section-icon", viewBox: "0 0 16 16", width: "13", height: "13", "aria-hidden": "true" })) svg.setAttribute(k, v);
+    const path = document.createElementNS(SVG_NS, "path");
+    for (const [k, v] of Object.entries({ d: icon, fill: "none", stroke: "currentColor", "stroke-width": "1.3", "stroke-linejoin": "round" })) path.setAttribute(k, v);
+    svg.append(path);
+    toggle.append(svg);
+  }
+  toggle.append(make("span", "section-label", label), make("span", "group-count", String(count)));
   head.append(toggle);
   return head;
 }
