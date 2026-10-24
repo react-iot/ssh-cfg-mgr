@@ -3195,7 +3195,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-cfg-mgr"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "glob",
  "serde",
@@ -3208,7 +3208,7 @@ dependencies = [
 
 [[package]]
 name = "sshconfig-lossless"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "stable_deref_trait"

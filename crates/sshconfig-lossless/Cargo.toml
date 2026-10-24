@@ -1,6 +1,6 @@
 [package]
 name = "sshconfig-lossless"
-version = "0.1.0"
+version = "0.1.1"
 description = "Lossless parser and editor for OpenSSH client config files (~/.ssh/config)"
 edition.workspace = true
 license.workspace = true
