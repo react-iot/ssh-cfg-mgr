@@ -373,6 +373,7 @@ function renderList() {
     head.classList.add("include-head");
     head.title = `${file.path}: from "Include ${file.pattern}" in ${file.from}${file.condition ? `, only for ${file.condition}` : ""}. Read-only.`;
     list.append(head);
+    if (file.line !== null && !editing) includeDrag(head, file.line);
     if (closed) return;
     const note = file.error ?? (members.length ? "" : "No hosts in this file.");
     if (note) {
@@ -393,15 +394,75 @@ function renderList() {
 
 const FILE_ICON = "M4 1.5h5L12.5 5v9a.5.5 0 0 1-.5.5H4a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5zM9 1.5V5h3.5";
 
+// Include lines at the top of the config can be dragged to reorder them:
+// OpenSSH reads them in order. All files from one line move together.
+function includeDrag(head, line) {
+  head.draggable = true;
+  head.classList.add("movable");
+  head.addEventListener("dragstart", (event) => {
+    event.dataTransfer.setData("text/plain", `line:${line}`);
+    event.dataTransfer.effectAllowed = "move";
+  });
+  const after = (event) => {
+    const box = head.getBoundingClientRect();
+    return event.clientY - box.top > box.height / 2;
+  };
+  const clear = () => head.classList.remove("drop-before", "drop-after");
+  head.addEventListener("dragover", (event) => {
+    if (!event.dataTransfer.types.includes("text/plain")) return;
+    event.preventDefault();
+    clear();
+    head.classList.add(after(event) ? "drop-after" : "drop-before");
+  });
+  head.addEventListener("dragleave", clear);
+  head.addEventListener("drop", (event) => {
+    event.preventDefault();
+    clear();
+    const data = event.dataTransfer.getData("text/plain");
+    if (data.startsWith("line:")) moveInclude(Number(data.slice(5)), line, after(event));
+  });
+}
+
+async function moveInclude(from, target, after) {
+  // The index in the new order, as for hosts.
+  let to = target + (after ? 1 : 0);
+  if (from < to) to -= 1;
+  if (from === to) return;
+  clearNotice();
+  try {
+    const result = await invoke("move_global_line", { revision: config.revision, from, to });
+    const keep = selected;
+    applyResult(result, "Moved the Include line.");
+    // applyResult selects nothing for this; keep the current host.
+    selected = keep;
+    render();
+  } catch (error) {
+    showNotice(String(error), "error");
+  }
+}
+
 // A section header that opens and closes; `key` is remembered when closed.
 // `icon` (an SVG path) goes before the label.
 function sectionHead(label, key, count, closed, icon = null) {
   const head = make("li", "group-head");
   head.setAttribute("role", "presentation");
-  const toggle = button("", "group-toggle", () => {
+  // A div with role=button, not a <button>: a drag that starts on a
+  // <button> inside a draggable row may not start in every engine, and
+  // include headers are dragged.
+  const toggle = make("div", "group-toggle");
+  toggle.setAttribute("role", "button");
+  toggle.tabIndex = 0;
+  const flip = () => {
     prefs.collapsed = closed ? prefs.collapsed.filter((g) => g !== key) : [...prefs.collapsed, key];
     savePrefs();
     renderList();
+  };
+  toggle.addEventListener("click", flip);
+  toggle.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      flip();
+    }
   });
   toggle.setAttribute("aria-expanded", String(!closed));
   toggle.append(chevron());

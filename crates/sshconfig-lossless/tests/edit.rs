@@ -411,3 +411,24 @@ fn include_lines_are_kept_as_directives() {
     config.block_mut(0).unwrap().set("User", "y");
     assert_eq!(config.to_string(), text.replace("User x", "User y"));
 }
+
+#[test]
+fn move_global_directive_reorders_include_lines() {
+    let text = "# Work first\nInclude work.conf\nInclude ~/.orbstack/ssh/config\n\nHost a\n";
+    let mut config = SshConfig::parse(text);
+    assert!(config.move_global_directive(1, 0));
+    assert_eq!(
+        config.to_string(),
+        "# Work first\nInclude ~/.orbstack/ssh/config\nInclude work.conf\n\nHost a\n"
+    );
+    assert!(config.move_global_directive(0, 1));
+    assert_eq!(config.to_string(), text);
+    assert!(!config.move_global_directive(0, 2));
+}
+
+#[test]
+fn move_global_directive_keeps_missing_final_newline() {
+    let mut config = SshConfig::parse("Include a\nInclude b");
+    config.move_global_directive(0, 1);
+    assert_eq!(config.to_string(), "Include b\nInclude a");
+}

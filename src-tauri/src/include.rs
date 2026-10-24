@@ -29,6 +29,9 @@ pub struct IncludedFile {
     pub from: String,
     /// `Host x` or `Match ...` if the Include is inside a block.
     pub condition: Option<String>,
+    /// For an Include before the first block of the main config: its index
+    /// in the config's global directives, so the UI can move the line.
+    pub line: Option<usize>,
     /// The parsed file. None if it could not be read.
     #[serde(skip)]
     pub config: Option<SshConfig>,
@@ -54,26 +57,43 @@ fn walk(
     found: &mut Vec<IncludedFile>,
 ) {
     // Includes before the first block, then inside each block.
-    let mut lines: Vec<(Vec<String>, String, Option<String>)> = config
+    // (paths, the Include value, condition, global directive index)
+    #[allow(clippy::type_complexity)]
+    let mut lines: Vec<(Vec<String>, String, Option<String>, Option<usize>)> = config
         .global_directives()
-        .filter(|d| d.is("Include"))
-        .map(|d| (d.args(), d.value().to_string(), None))
+        .enumerate()
+        .filter(|(_, d)| d.is("Include"))
+        // Only lines of the main config can be moved (depth 1).
+        .map(|(i, d)| {
+            (
+                d.args(),
+                d.value().to_string(),
+                None,
+                (depth == 1).then_some(i),
+            )
+        })
         .collect();
     for block in config.blocks().iter().filter(|b| b.is_enabled()) {
         let kind = if block.is_host() { "Host" } else { "Match" };
         let condition = format!("{kind} {}", block.pattern());
         for d in block.directives().filter(|d| d.is("Include")) {
-            lines.push((d.args(), d.value().to_string(), Some(condition.clone())));
+            lines.push((
+                d.args(),
+                d.value().to_string(),
+                Some(condition.clone()),
+                None,
+            ));
         }
     }
 
-    for (args, pattern, condition) in lines {
+    for (args, pattern, condition, line) in lines {
         for arg in args {
             let entry = |file: String, config, error| IncludedFile {
                 path: file,
                 pattern: pattern.clone(),
                 from: tilde(path, home),
                 condition: condition.clone(),
+                line,
                 config,
                 error,
             };
@@ -220,6 +240,7 @@ mod tests {
         assert_eq!(found[0].from, "~/.ssh/config");
         assert_eq!(found[0].pattern, "config.d/*.conf");
         assert!(found[0].condition.is_none());
+        assert_eq!(found[0].line, Some(0));
     }
 
     #[test]
@@ -235,6 +256,13 @@ mod tests {
         assert_eq!(paths(&found), ["~/.ssh/one", "~/.ssh/two", "~/.ssh/work"]);
         assert_eq!(found[1].from, "~/.ssh/one");
         assert_eq!(found[2].condition.as_deref(), Some("Host main"));
+        // Movable: only Include lines of the main config, before any block.
+        assert_eq!(found[0].line, Some(0));
+        assert_eq!(
+            found[1].line, None,
+            "two is included from one, not the config"
+        );
+        assert_eq!(found[2].line, None, "inside Host main");
         assert_eq!(found[2].config.as_ref().unwrap().blocks()[0].pattern(), "w");
     }
 

@@ -207,6 +207,7 @@ input.mono { font-family: var(--mono); font-size: 13px; }
 /* The header is a button that opens and closes the group. */
 .group-toggle { display: flex; align-items: center; gap: 6px; width: 100%; padding: 0; border: none; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
 .group-toggle:hover { color: var(--text); }
+.group-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .group-toggle .chevron { flex: none; transition: transform 0.15s ease; }
 .group-toggle[aria-expanded="true"] .chevron { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .group-toggle .chevron { transition: none; } }
@@ -217,6 +218,7 @@ input.mono { font-family: var(--mono); font-size: 13px; }
 .include-head .section-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; font-family: var(--mono); font-weight: 500; }
 .include-head .group-toggle { min-width: 0; }
 .section-icon { flex: none; }
+.list li.group-head.movable { cursor: grab; }
 .list li.include-note { padding: 4px 10px 8px; color: var(--muted); font-size: 12px; cursor: default; }
 .list li.include-note:hover { background: none; }
 .group-count { margin-left: auto; font-weight: 500; letter-spacing: 0; }

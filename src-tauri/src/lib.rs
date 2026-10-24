@@ -279,6 +279,23 @@ async fn save_block_raw(
     })
 }
 
+/// Move a line before the first block (an Include line), from global
+/// directive index `from` to `to`. OpenSSH reads Include lines in order.
+#[tauri::command]
+async fn move_global_line(
+    app: tauri::AppHandle,
+    revision: String,
+    from: usize,
+    to: usize,
+) -> Result<SaveResult, String> {
+    edit(&app, &revision, |config| {
+        if !config.move_global_directive(from, to) {
+            return Err(CHANGED_ON_DISK.to_string());
+        }
+        Ok(None)
+    })
+}
+
 /// Move the block at `from` to position `to`, with the comments above it.
 /// Order matters: OpenSSH uses the first value it finds.
 #[tauri::command]
@@ -525,7 +542,8 @@ pub fn run() {
             read_backup,
             restore_backup,
             move_block,
-            clear_backups
+            clear_backups,
+            move_global_line
         ])
         .setup(|app| {
             app.set_menu(menu_with_about(app.handle())?)?;

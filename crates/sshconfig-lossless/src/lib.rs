@@ -540,6 +540,51 @@ impl SshConfig {
         true
     }
 
+    /// Move one line before the first block: the directive at `from` in
+    /// [`SshConfig::global_directives`] order ends up at `to` in that order.
+    /// Other lines (comments, blank lines) stay where they are. Returns false
+    /// if either index is out of range.
+    ///
+    /// Use this to reorder `Include` lines: OpenSSH reads them in file order.
+    pub fn move_global_directive(&mut self, from: usize, to: usize) -> bool {
+        let positions = |lines: &[Line]| -> Vec<usize> {
+            lines
+                .iter()
+                .enumerate()
+                .filter(|(_, line)| !line.off && line.directive().is_some())
+                .map(|(i, _)| i)
+                .collect()
+        };
+        let before = positions(&self.global);
+        if from >= before.len() || to >= before.len() {
+            return false;
+        }
+        if from == to {
+            return true;
+        }
+        let eol = self.eol_style();
+        let ended_without_newline = self.last_line_mut().is_some_and(|l| l.eol.is_empty());
+
+        let line = self.global.remove(before[from]);
+        let after = positions(&self.global);
+        let at = match after.get(to) {
+            Some(&i) => i,
+            None => after.last().map_or(0, |&i| i + 1),
+        };
+        self.global.insert(at, line);
+
+        // Only the last line of a file may have no newline.
+        for line in self.lines_mut() {
+            if line.eol.is_empty() {
+                line.eol.clone_from(&eol);
+            }
+        }
+        if ended_without_newline && let Some(last) = self.last_line_mut() {
+            last.eol.clear();
+        }
+        true
+    }
+
     fn lines_mut(&mut self) -> impl Iterator<Item = &mut Line> {
         self.global.iter_mut().chain(
             self.blocks
