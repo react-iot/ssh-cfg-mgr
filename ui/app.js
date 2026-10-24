@@ -602,14 +602,16 @@ function renderView(detail) {
       // Shortcuts on hover: build the value, or pick a file. The result opens
       // in the field's editor; the tick saves it.
       const key = setting.keyword.toLowerCase();
-      if (BUILDERS[key]) {
+      // The row being edited has these in its field already.
+      const editingRow = inlineRow === i;
+      if (BUILDERS[key] && !editingRow) {
         actions.append(
           iconButton(WRENCH, `Build the ${setting.keyword} value`, () =>
             openBuilder(setting.keyword, BUILDERS[key], setting.value, (built) => editRow(i, built)),
           ),
         );
       }
-      if (PATH_KEYWORDS.has(key)) {
+      if (PATH_KEYWORDS.has(key) && !editingRow) {
         actions.append(
           iconButton(FOLDER, `Choose a file for ${setting.keyword}`, async () => {
             const picked = await pickFile(setting.keyword, setting.value);

@@ -330,7 +330,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 /* Per-row delete in the settings table: shown on hover; red when it asks
    for the second click. */
-td.row-actions { width: 1%; padding: 3px 6px; white-space: nowrap; }
+/* Right-aligned, so the trash is in the same place on every row. */
+td.row-actions { width: 1%; padding: 3px 6px; white-space: nowrap; text-align: right; }
 /* inline-grid: side by side (icon-only buttons are display: grid, which stacks). */
 td.row-actions button { display: inline-grid; vertical-align: middle; opacity: 0; height: 26px; border-color: transparent; background: none; }
 tr:hover td.row-actions button, td.row-actions button:focus-visible, td.row-actions button.confirming { opacity: 1; }
