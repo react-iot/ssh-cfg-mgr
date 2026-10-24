@@ -257,7 +257,7 @@ button.with-icon { display: flex; align-items: center; gap: 6px; height: 30px; }
 .option input { margin-top: 3px; accent-color: var(--accent); }
 
 .detail { flex: 1; padding: 24px 28px; overflow-y: auto; }
-.detail-head { display: flex; align-items: flex-start; gap: 16px; }
+.detail-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
 .detail-head h1 { flex: 1; }
 .actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .confirm-text { color: var(--danger); font-weight: 550; }

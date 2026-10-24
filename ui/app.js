@@ -728,11 +728,15 @@ function renderView(detail) {
   }
   detail.append(head);
 
+  // Only what the table does not show: why global settings are read-only,
+  // and that a block is turned off.
   const lead =
     entry.id === GLOBAL_ID
       ? "These settings are before the first Host or Match line. They apply to all hosts. This version cannot edit them."
-      : `${entry.enabled ? "" : "Off: commented out with #~, so OpenSSH ignores it. "}${entry.group ? `Group: ${entry.group}. ` : ""}${plural(entry.settings.length, "setting")}. The first value of each keyword is the one OpenSSH uses.`;
-  detail.append(make("p", "lead", lead));
+      : entry.enabled
+        ? ""
+        : "Off: commented out with #~, so OpenSSH ignores it.";
+  if (lead) detail.append(make("p", "lead", lead));
 
   const editable = entry.id !== GLOBAL_ID;
   if (entry.settings.length === 0 && !editable) {
