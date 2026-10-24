@@ -18,7 +18,89 @@ const KEYWORDS = [
   "UserKnownHostsFile", "HostKeyAlias", "CertificateFile", "ControlMaster",
   "ControlPath", "ControlPersist", "Compression", "RequestTTY", "RemoteCommand",
   "SetEnv", "SendEnv", "LogLevel", "PreferredAuthentications", "PubkeyAuthentication",
+  "TCPKeepAlive", "ConnectionAttempts", "ForwardX11", "BatchMode", "CheckHostIP",
+  "HashKnownHosts", "PasswordAuthentication", "ExitOnForwardFailure", "VisualHostKey",
+  "UpdateHostKeys",
 ];
+
+// The values each keyword takes, from man ssh_config (OpenSSH 10.3).
+// choices: only these. suggest: these, or any other text (a time or a path).
+// Keywords not listed take any text.
+const YES_NO = ["yes", "no"];
+const VALUE_TYPES = {
+  compression: { choices: YES_NO },
+  identitiesonly: { choices: YES_NO },
+  forwardx11: { choices: YES_NO },
+  batchmode: { choices: YES_NO },
+  checkhostip: { choices: YES_NO },
+  hashknownhosts: { choices: YES_NO },
+  passwordauthentication: { choices: YES_NO },
+  exitonforwardfailure: { choices: YES_NO },
+  tcpkeepalive: { choices: YES_NO },
+  usekeychain: { choices: YES_NO },
+  visualhostkey: { choices: YES_NO },
+  updatehostkeys: { choices: ["yes", "no", "ask"] },
+  controlmaster: { choices: ["yes", "no", "ask", "auto", "autoask"] },
+  loglevel: { choices: ["QUIET", "FATAL", "ERROR", "INFO", "VERBOSE", "DEBUG", "DEBUG1", "DEBUG2", "DEBUG3"] },
+  pubkeyauthentication: { choices: ["yes", "no", "unbound", "host-bound"] },
+  requesttty: { choices: ["no", "yes", "force", "auto"] },
+  stricthostkeychecking: { choices: ["yes", "accept-new", "no", "off", "ask"] },
+  addkeystoagent: { suggest: ["no", "yes", "confirm", "ask"] },
+  forwardagent: { suggest: YES_NO },
+  controlpersist: { suggest: YES_NO },
+  port: { min: 1, max: 65535 },
+  serveraliveinterval: { min: 0 },
+  serveralivecountmax: { min: 0 },
+  connecttimeout: { min: 0 },
+  connectionattempts: { min: 1 },
+};
+
+// An input for one value, of the right kind for the keyword. onDone(value)
+// runs on Enter or on a choice; onCancel on Escape.
+function valueEditor(keyword, current, onDone, onCancel) {
+  const type = VALUE_TYPES[keyword.toLowerCase()] ?? {};
+  let input;
+  if (type.choices) {
+    input = make("select");
+    // Keep a value that is in the file but not in the list.
+    const choices = type.choices.includes(current) || !current ? type.choices : [current, ...type.choices];
+    if (!current) input.append(Object.assign(make("option", "", "Choose…"), { value: "" }));
+    for (const choice of choices) input.append(Object.assign(make("option", "", choice), { value: choice }));
+    input.value = current;
+    input.addEventListener("change", () => input.value && onDone(input.value));
+  } else {
+    input = make("input", "mono");
+    input.value = current;
+    input.spellcheck = false;
+    if ("min" in type) {
+      input.type = "number";
+      input.min = type.min;
+      if (type.max) input.max = type.max;
+    }
+    if (type.suggest) {
+      const id = `suggest-${keyword.toLowerCase()}`;
+      if (!el(id)) {
+        const list = make("datalist");
+        list.id = id;
+        for (const s of type.suggest) list.append(Object.assign(make("option"), { value: s }));
+        document.body.append(list);
+      }
+      input.setAttribute("list", id);
+    }
+  }
+  input.classList.add("value-editor");
+  input.setAttribute("aria-label", `Value for ${keyword || "new keyword"}`);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      onCancel();
+    } else if (event.key === "Enter" && input.tagName === "INPUT") {
+      event.preventDefault();
+      if (input.reportValidity() && input.value.trim()) onDone(input.value.trim());
+    }
+  });
+  return input;
+}
 
 const el = (id) => document.getElementById(id);
 
@@ -27,6 +109,10 @@ let selected = null;
 // While the user edits a block, this holds the form state.
 let editing = null;
 let confirmingDelete = false;
+// In the detail table: the row whose value is being edited, and the
+// keyword chosen in the add row.
+let inlineRow = null;
+let addKeyword = "";
 
 // View preferences, kept per user in this app's local storage. Storage can
 // fail (private mode, cleared data); the defaults work without it.
@@ -278,13 +364,17 @@ function renderView(detail) {
         }),
       );
     } else {
-      actions.append(
-        button("Edit", "primary", () => startEdit(entry)),
-        button("Delete", "", () => {
-          confirmingDelete = true;
-          render();
-        }),
-      );
+      actions.append(button("Edit", "primary", () => startEdit(entry)));
+      // Only a Host can be copied: a new block is always a Host.
+      if (entry.kind === "Host") {
+        actions.append(button("Duplicate", "", () => startEdit({ ...entry, id: null, name: `${entry.name}-copy`, enabled: true })));
+      }
+      const trash = iconButton(TRASH, "Delete this block", () => {
+        confirmingDelete = true;
+        render();
+      });
+      trash.classList.add("trash");
+      actions.append(trash);
     }
     head.append(actions);
   }
@@ -296,7 +386,8 @@ function renderView(detail) {
       : `${entry.enabled ? "" : "Off: commented out with #~, so OpenSSH ignores it. "}${entry.group ? `Group: ${entry.group}. ` : ""}${plural(entry.settings.length, "setting")}. The first value of each keyword is the one OpenSSH uses.`;
   detail.append(make("p", "lead", lead));
 
-  if (entry.settings.length === 0) {
+  const editable = entry.id !== GLOBAL_ID;
+  if (entry.settings.length === 0 && !editable) {
     detail.append(make("p", "empty", "This block has no settings."));
     return;
   }
@@ -305,12 +396,116 @@ function renderView(detail) {
   const headRow = make("tr");
   headRow.append(make("th", "", "Keyword"), make("th", "", "Value"));
   table.append(headRow);
-  for (const setting of entry.settings) {
+  entry.settings.forEach((setting, i) => {
     const row = make("tr");
-    row.append(make("td", "", setting.keyword), make("td", "", setting.value));
+    const cell = make("td");
+    if (!editable) {
+      cell.textContent = setting.value;
+    } else if (inlineRow === i) {
+      const editor = valueEditor(
+        setting.keyword,
+        setting.value,
+        (value) => saveSettings(entry, entry.settings.map((s, j) => (j === i ? { ...s, value } : s))),
+        () => {
+          inlineRow = null;
+          render();
+        },
+      );
+      cell.append(editor);
+      queueMicrotask(() => editor.focus());
+    } else {
+      // Click the value to change it.
+      const value = button(setting.value, "value-button", () => {
+        inlineRow = i;
+        render();
+      });
+      value.title = "Click to change";
+      cell.append(value);
+    }
+    row.append(make("td", "", setting.keyword), cell);
     table.append(row);
-  }
+  });
+  if (editable) table.append(addRow(entry));
   detail.append(table);
+}
+
+// The last table row: choose a keyword, then enter its value.
+function addRow(entry) {
+  const row = make("tr", "add-row");
+  const pick = make("select");
+  pick.setAttribute("aria-label", "Keyword to add");
+  pick.append(Object.assign(make("option", "", "Add a setting…"), { value: "" }));
+  for (const keyword of [...KEYWORDS].sort(byName)) {
+    pick.append(Object.assign(make("option", "", keyword), { value: keyword }));
+  }
+  pick.value = addKeyword;
+  pick.addEventListener("change", () => {
+    addKeyword = pick.value;
+    render();
+    el("detail").querySelector(".add-row .value-editor")?.focus();
+  });
+  const valueCell = make("td");
+  if (addKeyword) {
+    const add = (value) => saveSettings(entry, [...entry.settings, { keyword: addKeyword, value }]);
+    const editor = valueEditor(addKeyword, "", add, () => {
+      addKeyword = "";
+      render();
+    });
+    valueCell.append(editor);
+    if (editor.tagName === "INPUT") {
+      valueCell.append(
+        button("Add", "primary", () => {
+          if (editor.reportValidity() && editor.value.trim()) add(editor.value.trim());
+        }),
+      );
+    }
+  }
+  const keywordCell = make("td");
+  keywordCell.append(pick);
+  row.append(keywordCell, valueCell);
+  return row;
+}
+
+// Save a block with new settings, from the detail table. The group stays.
+async function saveSettings(entry, settings) {
+  clearNotice();
+  const groupMode = entry.groupMode ?? prefs.newGroupMode;
+  let group = entry.group;
+  if (groupMode === "tag") {
+    // In Tag mode the Tag is the group: send it as the group, not a setting.
+    group = value(settings, "Tag");
+    settings = settings.filter((s) => s.keyword.toLowerCase() !== "tag");
+  }
+  try {
+    const result = await invoke("save_block", {
+      revision: config.revision,
+      index: Number(entry.id),
+      pattern: entry.name,
+      settings,
+      group,
+      groupMode,
+    });
+    inlineRow = null;
+    addKeyword = "";
+    applyResult(result, "Saved.");
+  } catch (error) {
+    showNotice(String(error), "error");
+  }
+}
+
+const TRASH = "M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5";
+
+function iconButton(path, label, onClick) {
+  const node = button("", "icon-only", onClick);
+  node.title = label;
+  node.setAttribute("aria-label", label);
+  const svg = document.createElementNS(SVG_NS, "svg");
+  for (const [k, v] of Object.entries({ viewBox: "0 0 16 16", width: "15", height: "15", "aria-hidden": "true" })) svg.setAttribute(k, v);
+  const shape = document.createElementNS(SVG_NS, "path");
+  for (const [k, v] of Object.entries({ d: path, fill: "none", stroke: "currentColor", "stroke-width": "1.4", "stroke-linecap": "round", "stroke-linejoin": "round" })) shape.setAttribute(k, v);
+  svg.append(shape);
+  node.append(svg);
+  return node;
 }
 
 // ---- Detail: edit form ----
@@ -325,7 +520,9 @@ function startEdit(entry, newGroup = false) {
   const groupMode = entry?.groupMode ?? prefs.newGroupMode;
   editing = entry
     ? {
-        index: Number(entry.id),
+        // id null: a copy of a block, saved as a new host.
+        index: entry.id === null ? null : Number(entry.id),
+        duplicate: entry.id === null,
         kind: entry.kind,
         pattern: entry.name,
         // In Tag mode the Group field is the Tag, so it is not a setting row.
@@ -347,7 +544,7 @@ function startEdit(entry, newGroup = false) {
         groupMode,
         newGroup,
       };
-  if (!entry) selected = NEW_ID;
+  if (editing.index === null) selected = NEW_ID;
   render();
   const first = document.querySelector("#detail input");
   if (first) first.focus();
@@ -369,7 +566,13 @@ function renderEdit(detail) {
     if (event.key === "Escape") cancelEdit();
   });
 
-  const title = editing.newGroup ? "New group" : editing.index === null ? "New host" : `Edit ${editing.kind}`;
+  const title = editing.newGroup
+    ? "New group"
+    : editing.duplicate
+      ? "Duplicate host"
+      : editing.index === null
+        ? "New host"
+        : `Edit ${editing.kind}`;
   form.append(make("h1", "", title));
   if (editing.newGroup) {
     form.append(make("p", "hint", "A group is saved with its hosts. Enter the group name and its first host. You can add more hosts to it later."));
@@ -528,6 +731,10 @@ function render() {
 
 function select(id) {
   if (editing) return;
+  if (id !== selected) {
+    inlineRow = null;
+    addKeyword = "";
+  }
   selected = id;
   confirmingDelete = false;
   clearNotice();
@@ -590,6 +797,8 @@ async function checkForChanges() {
     const same = entries().find((e) => e.name === name);
     if (same) selected = same.id;
     confirmingDelete = false;
+    // Row numbers may have moved; close the value editor.
+    inlineRow = null;
     showConfig();
     showNotice("The file changed on disk. The list was reloaded.");
   } catch {

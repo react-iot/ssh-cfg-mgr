@@ -235,5 +235,16 @@ th { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--b
 td:first-child { width: 220px; font-weight: 500; }
 td:last-child { font-family: var(--mono); word-break: break-all; }
 
+/* A value looks like text; hover shows it can be clicked to edit. */
+td:has(.value-button, .value-editor) { padding: 3px 6px; }
+.value-button { display: block; width: 100%; padding: 5px 6px; border: 1px solid transparent; background: none; text-align: left; word-break: break-all; cursor: text; }
+.value-button:hover { border-color: var(--border); background: var(--row-alt); }
+.value-editor { width: 100%; font-family: var(--mono); font-size: 13px; padding: 4px 6px; }
+.add-row td { background: var(--row-alt); }
+.add-row td:first-child { padding: 3px 6px; }
+.add-row td:last-child:has(button) { display: flex; gap: 6px; }
+.add-row select { width: 100%; padding: 4px 6px; font-family: var(--sans); }
+button.trash:hover { color: var(--danger); border-color: var(--danger); }
+
 .empty { color: var(--muted); max-width: 520px; }
 .error { color: var(--warn); }
