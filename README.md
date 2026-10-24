@@ -124,6 +124,9 @@ Download the file for your system from
 | Fedora, RHEL, openSUSE | `.rpm` | `sudo dnf install ./<file>.rpm` |
 | Other Linux | `.AppImage` | `chmod +x` the file, then run it |
 
+Linux files are for x86_64 (`amd64`, `x86_64`) and ARM64 (`arm64`,
+`aarch64`). Choose the one for your CPU (`uname -m`).
+
 To make a release, see [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Build and test

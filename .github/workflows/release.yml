@@ -1,4 +1,5 @@
-# Build the app for macOS (universal) and Linux (AppImage, .deb, .rpm).
+# Build the app for macOS (universal) and Linux x86_64 + ARM64 (AppImage,
+# .deb, .rpm).
 #
 # Every run builds and keeps the files as workflow artifacts:
 # - Push a tag vX.Y.Z (equal to "version" in src-tauri/tauri.conf.json):
@@ -28,6 +29,8 @@ jobs:
             args: --target universal-apple-darwin
           # The oldest supported Ubuntu, so the AppImage runs on older glibc.
           - platform: ubuntu-22.04
+            args: ""
+          - platform: ubuntu-22.04-arm
             args: ""
     runs-on: ${{ matrix.platform }}
     steps:
@@ -167,5 +170,5 @@ jobs:
           find dist -type f -print0 | xargs -0 gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "SSH Config Manager $GITHUB_REF_NAME" \
-            --notes "Downloads for macOS (universal: Apple silicon and Intel) and Linux (AppImage, .deb, .rpm).
+            --notes "Downloads for macOS (universal: Apple silicon and Intel) and Linux x86_64 and ARM64 (AppImage, .deb, .rpm).
           See the README for what is new and how to install."
