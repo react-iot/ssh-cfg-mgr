@@ -37,6 +37,8 @@ const VALUE_TYPES = {
   passwordauthentication: { choices: YES_NO },
   exitonforwardfailure: { choices: YES_NO },
   tcpkeepalive: { choices: YES_NO },
+  // Not in the man page, but OpenSSH reads it as TCPKeepAlive (ssh -G).
+  keepalive: { choices: YES_NO },
   usekeychain: { choices: YES_NO },
   visualhostkey: { choices: YES_NO },
   updatehostkeys: { choices: ["yes", "no", "ask"] },
@@ -60,15 +62,17 @@ const VALUE_TYPES = {
 // (or Escape) runs onCancel. Returns the line; .input is the field.
 function valueEditor(keyword, current, onDone, onCancel) {
   const type = VALUE_TYPES[keyword.toLowerCase()] ?? {};
-  const yesNo = type.choices === YES_NO && (!current || YES_NO.includes(current));
+  // A few fixed choices are buttons; a longer list (LogLevel) is a select.
+  // A value from the file that is not a choice keeps the select, so it shows.
+  const toggle = type.choices?.length <= 5 && (!current || type.choices.includes(current));
   let input;
   let focusTarget;
-  if (yesNo) {
-    // Two joined buttons. input.value holds the choice, like a field.
+  if (toggle) {
+    // Joined buttons. input.value holds the choice, like a field.
     input = make("div", "toggle");
     input.setAttribute("role", "radiogroup");
     input.value = current;
-    for (const choice of YES_NO) {
+    for (const choice of type.choices) {
       const option = button(choice, "", () => {
         input.value = choice;
         for (const b of input.children) b.setAttribute("aria-checked", String(b === option));
@@ -577,6 +581,20 @@ function renderView(detail) {
       const value = button(setting.value, "value-button", () => editRow(i));
       value.title = "Click to change";
       cell.append(value);
+      // Few fixed choices: show them on hover. A click opens the editor with
+      // that choice; the tick saves it.
+      const choices = VALUE_TYPES[setting.keyword.toLowerCase()]?.choices;
+      if (choices?.length <= 5 && choices.includes(setting.value)) {
+        const options = make("div", "toggle hover-options");
+        for (const choice of choices) {
+          const option = button(choice, "", () => editRow(i, choice));
+          option.setAttribute("aria-checked", String(choice === setting.value));
+          option.tabIndex = -1;
+          options.append(option);
+        }
+        cell.classList.add("has-options");
+        cell.append(options);
+      }
     }
     row.append(make("td", "", setting.keyword), cell);
     if (editable) {
@@ -799,7 +817,8 @@ function openBuilder(keyword, builder, current, onUse) {
   const actions = make("div", "form-actions");
   const cancel = make("button", "", "Cancel");
   cancel.value = "cancel";
-  actions.append(useButton, cancel);
+  // Cancel on the left, Use on the right, both at the right edge.
+  actions.append(cancel, useButton);
   form.append(make("span", "col-head", "Value"), preview, actions);
   dialog.append(form);
   dialog.addEventListener("close", () => {

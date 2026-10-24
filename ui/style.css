@@ -275,7 +275,11 @@ select.value-editor { padding-right: 30px; }
 .value-line { display: flex; align-items: stretch; }
 .value-line > .value-editor { height: 30px; border-radius: 6px 0 0 6px; }
 .value-line > .value-editor:focus-visible { position: relative; z-index: 1; outline-offset: -1px; }
-.value-line button { flex: none; height: 30px; }
+/* Buttons take the field's height (stretch), so they match in any engine. */
+.value-line button, .value-line .segmented > * { flex: none; height: auto; }
+.value-line .segmented, .value-line .toggle { align-self: stretch; }
+/* The toggle also has .value-editor; its field padding would shrink the buttons. */
+.value-line > .toggle.value-editor { flex: none; padding: 0; }
 .value-line button.primary { color: var(--on-accent); }
 .segmented.confirm { flex: none; margin-left: -1px; }
 .segmented.confirm > :first-child { border-radius: 0; }
@@ -287,6 +291,13 @@ select.value-editor { padding-right: 30px; }
 .toggle button:first-child { border-radius: 6px 0 0 6px; }
 .toggle button[aria-checked="true"] { position: relative; background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
 .toggle button:last-child { border-radius: 0; }
+
+/* Choices shown in place of the value while the row is hovered. */
+.hover-options { display: none; }
+tr:hover .has-options .value-button { display: none; }
+tr:hover .has-options .hover-options { display: flex; }
+.hover-options button { height: 30px; font-size: 13px; }
+.hover-options button:last-child { border-radius: 0 6px 6px 0; }
 
 /* Builder dialog. */
 dialog.builder { width: min(640px, 92vw); padding: 20px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35); }
@@ -300,7 +311,7 @@ dialog.builder h2 { margin: 0; font-size: 16px; color: var(--heading); }
 .builder-row button.icon-only { height: 32px; }
 dialog.builder .preview { display: block; width: 100%; padding: 8px 10px; border-radius: 6px; background: var(--row-alt); font: 13px var(--mono); word-break: break-all; }
 dialog.builder .preview.invalid { color: var(--muted); font-family: var(--sans); }
-dialog.builder .form-actions { margin-top: 4px; }
+dialog.builder .form-actions { margin-top: 4px; align-self: stretch; justify-content: flex-end; }
 button:disabled { opacity: 0.5; cursor: default; }
 
 /* Per-row delete in the settings table: shown on hover; red when it asks
@@ -320,7 +331,6 @@ textarea.raw:focus-visible { outline: 2px solid var(--accent); outline-offset: 1
 .detail-head .value-line { flex: 1; }
 /* Same font as the heading, so the name does not change size while editing. */
 .value-line > .pattern-editor { font: inherit; height: 34px; padding: 2px 6px; }
-.detail-head .value-line button { height: 34px; }
 button.trash:hover { color: var(--danger); border-color: var(--danger); }
 
 .empty { color: var(--muted); max-width: 520px; }

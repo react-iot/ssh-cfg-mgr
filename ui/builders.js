@@ -29,7 +29,7 @@ function splitListen(text = "") {
 
 const listen = (bind, port) => (bind ? `${bracket(bind)}:${port}` : port);
 
-const BIND = { key: "bind", label: "Bind address", placeholder: "localhost (optional)", optional: true };
+const BIND = { key: "bind", label: "Bind address", placeholder: "localhost", optional: true };
 
 const BUILDERS = {
   localforward: {

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use sshconfig_lossless::{Block, Directive, SshConfig};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
+use tauri::menu::{AboutMetadata, Menu, PredefinedMenuItem};
 
 /// Set this variable to open another file instead of `~/.ssh/config`.
 /// Useful for tests and screenshots.
@@ -391,6 +392,52 @@ fn clean_settings(settings: Vec<Setting>) -> Result<Vec<Setting>, String> {
     Ok(clean)
 }
 
+/// Tauri's default menu, with a fuller About panel. On macOS the panel
+/// shows name, version, copyright, credits and icon only (see
+/// `tauri::menu::AboutMetadata`), so the website and license go in the
+/// credits text.
+fn menu_with_about(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let menu = Menu::default(app)?;
+    let version = app.package_info().version.to_string();
+    let about = AboutMetadata {
+        name: Some("SSH Config Manager".into()),
+        version: Some(version.clone()),
+        short_version: Some(version),
+        copyright: Some("© 2026 ReactIoT".into()),
+        credits: Some(
+            "Manage ~/.ssh/config without losing comments or formatting. \
+             Every save is checked with ssh -G, and a backup is kept.\n\n\
+             https://reactiot.com.au\n\
+             https://github.com/react-iot/ssh-cfg-mgr\n\
+             Licensed under Apache-2.0."
+                .into(),
+        ),
+        authors: Some(vec!["ReactIoT".into()]),
+        comments: Some("Manage ~/.ssh/config and SSH keys.".into()),
+        license: Some("Apache-2.0".into()),
+        website: Some("https://reactiot.com.au".into()),
+        website_label: Some("reactiot.com.au".into()),
+        // The bundle icon is missing under `tauri dev`; set it here so the
+        // panel always shows the app icon.
+        icon: app.default_window_icon().cloned(),
+    };
+    let about = PredefinedMenuItem::about(app, None, Some(about))?;
+
+    // Where Menu::default puts About: first item of the app menu on macOS,
+    // first item of Help (the last menu) elsewhere.
+    let items = menu.items()?;
+    let submenu = if cfg!(target_os = "macos") {
+        items.first()
+    } else {
+        items.last()
+    };
+    if let Some(submenu) = submenu.and_then(|item| item.as_submenu()) {
+        submenu.remove_at(0)?;
+        submenu.insert(&about, 0)?;
+    }
+    Ok(menu)
+}
+
 pub fn run() {
     tauri::Builder::default()
         // The file picker for IdentityFile and other path keywords.
@@ -402,6 +449,10 @@ pub fn run() {
             set_block_enabled,
             save_block_raw
         ])
+        .setup(|app| {
+            app.set_menu(menu_with_about(app.handle())?)?;
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running SSH Cfg Mgr");
 }
