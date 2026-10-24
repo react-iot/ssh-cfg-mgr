@@ -451,14 +451,16 @@ function addRow(entry) {
       addKeyword = "";
       render();
     });
-    valueCell.append(editor);
+    const line = make("div", "add-value");
+    line.append(editor);
     if (editor.tagName === "INPUT") {
-      valueCell.append(
-        button("Add", "primary", () => {
-          if (editor.reportValidity() && editor.value.trim()) add(editor.value.trim());
-        }),
-      );
+      const tick = iconButton(TICK, `Add ${addKeyword}`, () => {
+        if (editor.reportValidity() && editor.value.trim()) add(editor.value.trim());
+      });
+      tick.classList.add("primary");
+      line.append(tick);
     }
+    valueCell.append(line);
   }
   const keywordCell = make("td");
   keywordCell.append(pick);
@@ -493,7 +495,8 @@ async function saveSettings(entry, settings) {
   }
 }
 
-const TRASH = "M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5";
+const TICK = "M3 8.5l3.2 3.2L13 4.8";
+const TRASH ="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5";
 
 function iconButton(path, label, onClick) {
   const node = button("", "icon-only", onClick);
