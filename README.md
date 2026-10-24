@@ -13,7 +13,7 @@
 [![Release](https://github.com/react-iot/ssh-cfg-mgr/actions/workflows/release.yml/badge.svg)](https://github.com/react-iot/ssh-cfg-mgr/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/react-iot/ssh-cfg-mgr?label=version)](https://github.com/react-iot/ssh-cfg-mgr/releases/latest)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-blue)](https://github.com/react-iot/ssh-cfg-mgr/releases/latest)
-[![License](https://img.shields.io/github/license/react-iot/ssh-cfg-mgr)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/sponsor-%E2%99%A5-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/react-iot)
 
 A free, open-source desktop app for macOS and Linux that manages your
