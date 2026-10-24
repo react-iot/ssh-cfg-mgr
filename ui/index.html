@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="style.css" />
     <script src="builders.js" defer></script>
     <script src="diff.js" defer></script>
-    <script src="app.js" defer></script>
+    <script type="module" src="main.js"></script>
   </head>
   <body>
     <header class="topbar">
@@ -36,7 +36,7 @@
     </header>
 
     <main class="layout">
-      <aside id="sidebar" class="sidebar">
+      <host-list id="sidebar" class="sidebar">
         <div class="sidebar-tools">
           <div class="segmented">
             <input id="search" type="search" placeholder="Filter hosts" aria-label="Filter hosts" autocomplete="off" spellcheck="false" />
@@ -53,7 +53,7 @@
           </div>
         </div>
         <ul id="list" class="list" role="listbox" aria-label="Hosts"></ul>
-      </aside>
+      </host-list>
 
       <section class="detail">
         <p id="notice" class="notice" role="status" hidden></p>
@@ -62,7 +62,7 @@
     </main>
 
     <!-- Left part lines up with the sidebar, right part with the detail. -->
-    <footer class="statusbar">
+    <status-bar class="statusbar">
       <span id="count" class="count"></span>
       <div class="status-file">
         <code id="path" class="path"></code>
@@ -70,9 +70,6 @@
         <span class="spacer"></span>
         <span id="sync" class="sync" role="status"></span>
       </div>
-    </footer>
-
-    <datalist id="keywords"></datalist>
-    <datalist id="groups"></datalist>
+    </status-bar>
   </body>
 </html>
