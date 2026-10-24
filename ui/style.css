@@ -170,7 +170,8 @@ input.mono { font-family: var(--mono); font-size: 13px; }
   cursor: pointer;
 }
 /* Zebra rows, counting host rows only, so group headers do not shift the stripes. */
-.list li[role="option"]:nth-child(even of [role="option"]) { background: var(--row-alt); }
+/* :where() keeps this weaker than hover and selection ("of S" adds specificity). */
+.list li:where(:nth-child(even of [role="option"])) { background: var(--row-alt); }
 .list li:hover { background: var(--row-hover); }
 .list li.group-head { display: block; padding: 12px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); cursor: default; }
 .list li.group-head:hover { background: none; }
@@ -185,7 +186,8 @@ button.visibility:hover { color: var(--accent); }
 .list li.off button.visibility,
 button.visibility:focus-visible { opacity: 1; }
 .list li[role="option"][aria-selected="true"] { background: var(--selected); color: var(--selected-text); }
-.list li[aria-selected="true"] :is(.sub, .kind, button.visibility) { color: inherit; opacity: 0.8; }
+.list li[aria-selected="true"] :is(.sub, .kind) { color: inherit; opacity: 0.8; }
+.list li[aria-selected="true"] button.visibility { color: inherit; }
 
 .kind { font-size: 11px; color: var(--muted); flex: none; }
 .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
