@@ -1,14 +1,25 @@
-/* ReactIoT brand tokens, from website assets/styles/tokens.css.
-   Fonts are system stacks per brand guidelines: no font files, CSP stays 'self'. */
+/* Surfaces, text and selection use the system's colors, so the app looks
+   native and follows light/dark mode and the user's accent color. The
+   ReactIoT brand blue (website assets/styles/tokens.css) is for the logo,
+   primary buttons and focus only. System font: no font files, CSP stays 'self'. */
 :root {
   color-scheme: light dark;
-  --bg: #f7f9fc;          /* neutral-50 */
-  --panel: #ffffff;       /* neutral-0 */
-  --border: #dfe5ee;      /* Light Line */
-  --text: #1f2733;        /* Body Ink */
-  --heading: #0b1f3a;     /* Ink Navy */
-  --muted: #5a6573;       /* Muted Slate */
-  --accent: #2979ff;      /* React IoT Blue: borders, focus, selection */
+  --bg: Canvas;
+  --panel: Canvas;
+  --text: CanvasText;
+  --heading: CanvasText;
+  --muted: color-mix(in srgb, CanvasText 60%, Canvas);
+  --border: color-mix(in srgb, CanvasText 12%, Canvas);
+  --row-alt: color-mix(in srgb, CanvasText 4%, Canvas);
+  --row-hover: color-mix(in srgb, CanvasText 8%, Canvas);
+  --selected: Highlight;
+  --selected-text: HighlightText;
+  /* The user's system accent where the engine gives it (see the @supports
+     rules below); else the brand blue. Group headers mix it 80% with the
+     text color: 5.8:1 (light) and 5.5:1 (dark), above AA for small text. */
+  --system-accent: #2979ff;
+  --accent-text: color-mix(in srgb, var(--system-accent) 80%, CanvasText);
+  --accent: #2979ff;      /* React IoT Blue: focus, borders */
   --accent-fill: #1f63d6; /* brand-hover: white on #2979ff is 3.98:1, below AA */
   --accent-ink: #174fb0;  /* brand-press: accent text on soft fill, 6.95:1 */
   --accent-soft: #f0f6ff; /* Panel Tint */
@@ -16,18 +27,35 @@
   --warn-soft: #fdf6ea;
   --danger: #b42318;      /* brand #ef4444 fails AA with white text */
   --on-accent: #ffffff;
-  --sans: "Helvetica Neue", Helvetica, Arial, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --mono: "SF Mono", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Standard CSS system accent, for engines that support it (e.g. WebKitGTK
+   if it does). macOS uses its own accent below, which wins. */
+@supports (color: AccentColor) {
+  :root { --system-accent: AccentColor; }
+}
+
+/* macOS WebKit has the AppKit semantic colors (labelColor, separatorColor,
+   alternating row colors, the accent-colored selection). Linux uses the
+   standard system colors above. */
+@supports (color: -apple-system-label) {
+  :root {
+    --text: -apple-system-label;
+    --heading: -apple-system-label;
+    --muted: -apple-system-secondary-label;
+    --border: -apple-system-separator;
+    --row-alt: -apple-system-odd-alternating-content-background;
+    --row-hover: -apple-system-unemphasized-selected-content-background;
+    --selected: -apple-system-selected-content-background;
+    --selected-text: -apple-system-alternate-selected-text;
+    --system-accent: -apple-system-control-accent;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #060912;          /* neutral-950 */
-    --panel: #0b1220;       /* neutral-900 */
-    --border: #1f2a3d;
-    --text: #e2e7ee;        /* neutral-200 */
-    --heading: #f2f5fa;
-    --muted: #b6bfce;
     --accent: #7fb0ff;      /* Sky: highlight on dark */
     --accent-fill: #7fb0ff;
     --accent-ink: #7fb0ff;
@@ -67,6 +95,15 @@ body {
 .path { color: var(--muted); font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spacer { flex: 1; }
 
+.statusbar { display: flex; align-items: stretch; border-top: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 12px; min-width: 0; }
+.statusbar .count { width: 300px; flex: none; padding: 5px 16px; border-right: 1px solid var(--border); }
+.status-file { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 5px 16px; }
+.statusbar .badge { padding: 0 8px; font-size: 11px; }
+.sync { white-space: nowrap; }
+.sync::before { content: "●"; margin-right: 6px; color: var(--success, #10b981); }
+.sync.changed::before { color: var(--accent); }
+.sync.error::before { color: var(--warn); }
+
 .badge {
   flex: none;
   white-space: nowrap;
@@ -91,11 +128,25 @@ button:hover { border-color: var(--accent); }
 button.primary { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); font-weight: 550; }
 button.primary:hover { filter: brightness(1.08); }
 button.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 550; }
-button.icon { padding: 4px 10px; font-size: 16px; line-height: 1; color: var(--muted); }
-button.icon:hover { color: var(--danger); border-color: var(--danger); }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Buttons and selects joined into one control: shared borders, outer corners round. */
+.segmented { display: flex; }
+.segmented > * { height: 32px; margin: 0; border-radius: 0; background: var(--bg); }
+.segmented > * + * { margin-left: -1px; }
+.segmented > :first-child { border-radius: 6px 0 0 6px; }
+.segmented > :last-child { border-radius: 0 6px 6px 0; }
+.segmented > :hover, .segmented > :focus-visible { position: relative; }
+.segmented input { flex: 1; }
+.segmented button { display: grid; place-items: center; padding: 0 11px; color: var(--muted); }
+/* One icon per sort state. No sort is dimmed; a sort direction is full strength. */
+.sort svg { display: none; }
+.sort[data-sort="file"] .sort-file { display: block; opacity: 0.5; }
+.sort[data-sort="asc"] .sort-asc,
+.sort[data-sort="desc"] .sort-desc { display: block; }
+.segmented button.sort:not([data-sort="file"]) { color: var(--text); }
+button.add { color: var(--accent-ink); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-input {
+input, select {
   font: inherit;
   padding: 6px 10px;
   border: 1px solid var(--border);
@@ -103,6 +154,17 @@ input {
   background: var(--panel);
   color: var(--text);
   min-width: 0;
+}
+
+/* Our own select look: the native WebKit one ignores padding and colors.
+   The chevron is mid-grey, so it works in light and dark. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 6px 30px 6px 10px;
+  background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 6.5 8 10l3.5-3.5' fill='none' stroke='%238a8f98' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 9px center / 14px;
+  font-family: var(--sans);
+  cursor: pointer;
 }
 input.mono { font-family: var(--mono); font-size: 13px; }
 
@@ -116,8 +178,12 @@ input.mono { font-family: var(--mono); font-size: 13px; }
   background: var(--panel);
 }
 
-.sidebar-tools { display: flex; gap: 8px; margin: 12px; }
-#search { flex: 1; background: var(--bg); }
+.sidebar-tools { position: relative; margin: 12px; }
+
+.menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 10; min-width: 150px; display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); }
+.menu[hidden] { display: none; }
+.menu button { border: none; background: none; text-align: left; padding: 6px 10px; border-radius: 5px; }
+.menu button:hover, .menu button:focus-visible { background: var(--selected); color: var(--selected-text); outline: none; }
 
 .sidebar.locked .list,
 .sidebar.locked .sidebar-tools { opacity: 0.5; pointer-events: none; }
@@ -132,45 +198,218 @@ input.mono { font-family: var(--mono); font-size: 13px; }
   border-radius: 6px;
   cursor: pointer;
 }
-.list li:hover { background: var(--bg); }
-.list li[aria-selected="true"] { background: var(--accent-soft); }
+/* Zebra rows, counting host rows only, so group headers do not shift the stripes. */
+/* :where() keeps this weaker than hover and selection ("of S" adds specificity). */
+.list li:where(:nth-child(even of [role="option"])) { background: var(--row-alt); }
+.list li:hover { background: var(--row-hover); }
+.list li.group-head { display: block; padding: 10px 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-text); cursor: default; }
+.list li.group-head:hover { background: none; }
+/* The header is a button that opens and closes the group. */
+.group-toggle { display: flex; align-items: center; gap: 6px; width: 100%; padding: 0; border: none; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
+.group-toggle:hover { color: var(--text); }
+.group-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.group-toggle .chevron { flex: none; transition: transform 0.15s ease; }
+.group-toggle[aria-expanded="true"] .chevron { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .group-toggle .chevron { transition: none; } }
+.list li.group-head:has(.group-remove) { display: flex; align-items: center; gap: 6px; }
+.group-remove { height: 22px; padding: 0 4px; }
+.group-remove:hover { color: var(--danger); }
+/* Included files: a path, so no capitals; long paths are cut with "…". */
+.include-head .section-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; font-family: var(--mono); font-weight: 500; }
+.include-head .group-toggle { min-width: 0; }
+.section-icon { flex: none; }
+.list li.group-head.movable { cursor: grab; }
+.list li.include-note { padding: 4px 10px 8px; color: var(--muted); font-size: 12px; cursor: default; }
+.list li.include-note:hover { background: none; }
+.group-count { margin-left: auto; font-weight: 500; letter-spacing: 0; }
+/* Space and a line between groups, so each reads as its own section. */
+.list li.group-head:not(:first-child) { margin-top: 12px; border-top: 1px solid var(--border); border-radius: 0; }
+.list li.off .text { opacity: 0.5; }
+
+/* Drag hosts between groups. */
+.list li[draggable="true"] { cursor: grab; }
+.list li.drop-hint { padding: 8px 10px; margin: 2px 0; border: 1px dashed var(--border); border-radius: 6px; color: var(--muted); font-size: 12px; cursor: default; }
+.list li.drop-hint:hover { background: none; }
+.list li.drop-over { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Where a dragged host will go: a line above or below the row. */
+.list li.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.list li.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.list li.group-new { display: block; padding: 8px 4px; cursor: default; }
+.list li.group-new:hover { background: none; }
+.list li.group-new input { width: 100%; }
+
+/* Always shown when the block is hidden; on hover or focus when it is visible.
+   opacity, not visibility, so the hidden button can still get keyboard focus. */
+button.visibility { margin-left: auto; align-self: center; flex: none; display: grid; place-items: center; padding: 4px; border: none; background: none; color: var(--muted); opacity: 0; }
+button.visibility svg { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+button.visibility:hover { color: var(--accent); }
+.list li:hover button.visibility,
+.list li.off button.visibility,
+button.visibility:focus-visible { opacity: 1; }
+.list li[role="option"][aria-selected="true"] { background: var(--selected); color: var(--selected-text); }
+.list li[aria-selected="true"] :is(.sub, .kind) { color: inherit; opacity: 0.8; }
+.list li[aria-selected="true"] button.visibility { color: inherit; }
 
 .kind { font-size: 11px; color: var(--muted); flex: none; }
-.name { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.name.plain { font-family: inherit; font-weight: 500; }
+.name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .text { display: flex; flex-direction: column; min-width: 0; }
-.sub { color: var(--muted); font-family: var(--mono); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sub { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.count { margin: 0; padding: 8px 16px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
 
+button.icon-only { display: grid; place-items: center; padding: 0 8px; height: 30px; color: var(--muted); }
+button.with-icon { display: flex; align-items: center; gap: 6px; height: 30px; }
+
+.options { max-width: 760px; margin: 0 0 8px; padding: 0; border: none; display: flex; flex-direction: column; gap: 10px; }
+.options legend { margin-bottom: 8px; font-weight: 600; color: var(--heading); }
+
+/* Settings: one card per section. */
+.settings-section { max-width: 760px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+.settings-section h2 { margin: 0 0 10px; font-size: 14px; color: var(--heading); }
+.settings-section p { margin: 0 0 8px; }
+.settings-section .form-actions { margin-top: 10px; }
+.path-line { display: block; padding: 6px 10px; border-radius: 6px; background: var(--row-alt); font: 12px var(--mono); overflow-wrap: anywhere; }
+.theme-toggle { margin-bottom: 8px; }
+.theme-toggle button { min-width: 72px; height: 30px; }
+.option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); cursor: pointer; }
+.option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.option input { margin-top: 3px; accent-color: var(--accent); }
+
+/* Custom elements are inline by default. */
+:is(host-detail, raw-editor, settings-view, history-view) { display: block; }
 .detail { flex: 1; padding: 24px 28px; overflow-y: auto; }
-.detail-head { display: flex; align-items: flex-start; gap: 16px; max-width: 760px; }
+.detail-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
 .detail-head h1 { flex: 1; }
 .actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .confirm-text { color: var(--danger); font-weight: 550; }
 
-.notice { max-width: 760px; margin: 0 0 16px; padding: 10px 14px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
+.notice { margin: 0 0 16px; padding: 10px 14px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
 .notice.ok { background: var(--accent-soft); color: var(--text); }
 .notice.error { background: var(--warn-soft); color: var(--warn); font-family: var(--mono); font-size: 13px; }
 
-.edit-form { max-width: 760px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.edit-form { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.edit-form > .detail-head { width: 100%; align-items: center; }
+.edit-form > .detail-head h1 { margin: 0; }
 .edit-form h1 { margin-bottom: 8px; }
 .field { display: flex; flex-direction: column; gap: 4px; width: 100%; font-weight: 550; }
 .field input { font-family: var(--mono); font-weight: 400; }
 .hint { margin: 0; color: var(--muted); font-size: 12px; }
-.settings { display: grid; grid-template-columns: 220px 1fr auto; gap: 6px 8px; width: 100%; margin-top: 10px; }
 .col-head { font-size: 12px; font-weight: 600; color: var(--muted); }
 .form-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 
-.detail h1 { margin: 0 0 4px; color: var(--heading); font-size: 20px; font-family: var(--mono); font-weight: 600; word-break: break-all; }
+.detail h1 { margin: 0 0 4px; color: var(--heading); font-size: 20px; font-weight: 600; word-break: break-all; }
 .detail .lead { margin: 0 0 20px; color: var(--muted); }
 
-table { width: 100%; max-width: 760px; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+/* The table fills the detail pane; the value column gets the space. */
+table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
 tr:last-child td { border-bottom: none; }
 th { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--bg); }
 td:first-child { width: 220px; font-weight: 500; }
-td:last-child { font-family: var(--mono); word-break: break-all; }
+td:nth-child(2) { font-family: var(--mono); overflow-wrap: anywhere; }
+
+/* A value looks like text; hover shows it can be clicked to edit. */
+td:has(.value-button, .value-editor) { padding: 3px 6px; }
+.value-button { display: block; width: 100%; padding: 5px 6px; border: 1px solid transparent; background: none; text-align: left; overflow-wrap: anywhere; cursor: text; }
+.value-button:hover { border-color: var(--border); background: var(--row-alt); }
+.value-editor { flex: 1; min-width: 0; font-family: var(--mono); font-size: 13px; padding: 4px 6px; }
+select.value-editor { padding-right: 30px; }
+.add-row td { background: var(--row-alt); }
+.add-row td:first-child { padding: 3px 6px; }
+/* Field, tick and cross as one control: one border, square inner corners. */
+.value-line { display: flex; align-items: stretch; }
+.value-line > .value-editor { height: 30px; border-radius: 6px 0 0 6px; }
+/* Focus ring inside the border, so the field stays the buttons' height. */
+.value-line > .value-editor:focus { position: relative; z-index: 1; outline: none; border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+/* Buttons take the field's height (stretch), so they match in any engine. */
+.value-line button, .value-line .segmented > * { flex: none; height: auto; }
+.value-line .segmented, .value-line .toggle { align-self: stretch; }
+/* The toggle also has .value-editor; its field padding would shrink the buttons. */
+.value-line > .toggle.value-editor { flex: none; padding: 0; }
+.value-line button.primary { color: var(--on-accent); }
+.segmented.confirm { flex: none; margin-left: -1px; }
+.segmented.confirm > :first-child { border-radius: 0; }
+
+/* yes / no as two joined buttons; the chosen one is filled. */
+.toggle { display: flex; flex: none; }
+/* Flex centring: with a set height, the default padding put the text low. */
+.toggle button { display: inline-flex; align-items: center; justify-content: center; padding-top: 0; padding-bottom: 0; line-height: 1; min-width: 52px; border-radius: 0; font-family: var(--sans); }
+.toggle button + button { margin-left: -1px; }
+.toggle button:first-child { border-radius: 6px 0 0 6px; }
+.toggle button[aria-checked="true"] { position: relative; background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
+.toggle button:last-child { border-radius: 0 6px 6px 0; }
+/* In the editor the tick follows the toggle, so its end is square. */
+.value-line .toggle button:last-child { border-radius: 0; }
+
+/* Choices shown in place of the value while the row is hovered. */
+.hover-options { display: none; }
+tr:hover .has-options .value-button { display: none; }
+tr:hover .has-options .hover-options { display: flex; }
+.hover-options button { height: 30px; font-size: 13px; }
+
+/* History: backups on the left, what a restore would change on the right. */
+.history { display: grid; grid-template-columns: 270px 1fr; gap: 16px; align-items: start; }
+.history-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.history-list li + li { border-top: 1px solid var(--border); }
+/* One line: time on the left, size on the right. */
+.history-list button { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; width: 100%; white-space: nowrap; padding: 7px 10px; border: none; border-radius: 0; background: none; text-align: left; font-size: 13px; }
+.history-list button:hover { background: var(--row-hover); }
+.history-list button.selected { background: var(--selected); color: var(--selected-text); }
+.history-list button.selected .sub { color: inherit; opacity: 0.8; }
+.history-pane { min-width: 0; }
+.history-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+pre.diff { margin: 0; padding: 8px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); font: 12.5px/1.5 var(--mono); overflow-x: auto; }
+pre.diff div { padding: 0 12px; white-space: pre; }
+pre.diff .add { background: color-mix(in srgb, #10b981 18%, transparent); }
+pre.diff .del { background: color-mix(in srgb, #ef4444 18%, transparent); }
+pre.diff .fold { color: var(--muted); font-family: var(--sans); font-size: 12px; padding: 2px 12px; }
+
+/* About dialog: centered, like the native panel, with real links. */
+dialog.about { width: min(360px, 90vw); padding: 24px 24px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); text-align: center; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35); }
+dialog.about::backdrop { background: rgba(0, 0, 0, 0.35); }
+dialog.about img { width: 64px; height: 64px; }
+dialog.about h2 { margin: 6px 0 2px; font-size: 17px; color: var(--heading); }
+.about-version { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+.about-text { margin: 0 0 14px; font-size: 13px; line-height: 1.45; }
+.about-links { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.about-links a { color: var(--accent-ink); text-decoration: none; }
+.about-links a:hover { text-decoration: underline; }
+.about-copy { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+dialog.about form { display: flex; justify-content: center; }
+
+/* Builder dialog. */
+dialog.builder { width: min(640px, 92vw); padding: 20px 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35); }
+dialog.builder::backdrop { background: rgba(0, 0, 0, 0.35); }
+dialog.builder form { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+dialog.builder h2 { margin: 0; font-size: 16px; color: var(--heading); }
+.builder-rows { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.builder-row { display: flex; align-items: flex-end; gap: 8px; width: 100%; }
+.builder-row .field { flex: 1; font-weight: 500; font-size: 12px; }
+.builder-row .field input, .builder-row .field select { width: 100%; font-size: 13px; }
+.builder-row button.icon-only { height: 32px; }
+dialog.builder .preview { display: block; width: 100%; padding: 8px 10px; border-radius: 6px; background: var(--row-alt); font: 13px var(--mono); word-break: break-all; }
+dialog.builder .preview.invalid { color: var(--muted); font-family: var(--sans); }
+dialog.builder .form-actions { margin-top: 4px; align-self: stretch; justify-content: flex-end; }
+button:disabled { opacity: 0.5; cursor: default; }
+
+/* Per-row delete in the settings table: shown on hover; red when it asks
+   for the second click. */
+/* Right-aligned, so the trash is in the same place on every row. */
+td.row-actions { width: 1%; padding: 3px 6px; white-space: nowrap; text-align: right; vertical-align: middle; }
+/* inline-grid: side by side (icon-only buttons are display: grid, which stacks). */
+td.row-actions button { display: inline-grid; vertical-align: middle; opacity: 0; height: 26px; border-color: transparent; background: none; }
+tr:hover td.row-actions button, td.row-actions button:focus-visible, td.row-actions button.confirming { opacity: 1; }
+td.row-actions button.confirming { color: var(--danger); border-color: var(--danger); }
+
+textarea.raw { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font: 13px/1.5 var(--mono); tab-size: 4; resize: vertical; }
+textarea.raw:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.add-row select { width: 100%; }
+.detail-head h1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.kind-label { flex: none; }
+.title-button { width: auto; min-width: 0; font: inherit; color: inherit; }
+.detail-head .value-line { flex: 1; }
+/* Same font as the heading, so the name does not change size while editing. */
+.value-line > .pattern-editor { font: inherit; height: 34px; padding: 2px 6px; }
+button.trash:hover { color: var(--danger); border-color: var(--danger); }
 
 .empty { color: var(--muted); max-width: 520px; }
 .error { color: var(--warn); }

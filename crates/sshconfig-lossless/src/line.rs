@@ -145,10 +145,24 @@ pub enum LineKind {
 pub struct Line {
     pub kind: LineKind,
     pub(crate) eol: String,
+    /// True if the line starts with [`OFF_PREFIX`]. OpenSSH reads it as a
+    /// comment; `kind` is the line after the prefix.
+    pub(crate) off: bool,
 }
+
+/// The prefix that turns a line off. A block whose lines all have it is a
+/// disabled block: OpenSSH ignores it, and removing the prefix restores it.
+/// Plain `#` is not used, because a normal comment can start with `# Host`.
+pub const OFF_PREFIX: &str = "#~";
 
 impl Line {
     pub(crate) fn parse(text: &str, eol: &str) -> Self {
+        if let Some(rest) = text.strip_prefix(OFF_PREFIX) {
+            return Line {
+                off: true,
+                ..Line::parse(rest, eol)
+            };
+        }
         let trimmed = text.trim_start();
         let kind = if trimmed.is_empty() {
             LineKind::Blank(text.to_string())
@@ -160,14 +174,25 @@ impl Line {
         Line {
             kind,
             eol: eol.to_string(),
+            off: false,
+        }
+    }
+
+    pub(crate) fn new(kind: LineKind, eol: &str) -> Self {
+        Line {
+            kind,
+            eol: eol.to_string(),
+            off: false,
         }
     }
 
     pub(crate) fn blank(eol: &str) -> Self {
-        Line {
-            kind: LineKind::Blank(String::new()),
-            eol: eol.to_string(),
-        }
+        Line::new(LineKind::Blank(String::new()), eol)
+    }
+
+    /// True if the line starts with [`OFF_PREFIX`].
+    pub fn is_off(&self) -> bool {
+        self.off
     }
 
     pub fn directive(&self) -> Option<&Directive> {
@@ -201,6 +226,9 @@ impl Line {
 
 impl fmt::Display for Line {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.off {
+            f.write_str(OFF_PREFIX)?;
+        }
         match &self.kind {
             LineKind::Blank(text) | LineKind::Comment(text) => f.write_str(text)?,
             LineKind::Directive(d) => write!(f, "{d}")?,

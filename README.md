@@ -4,11 +4,27 @@ A free, open-source desktop app for macOS and Linux that manages your
 `~/.ssh/config` file and SSH keys. Made by ReactIoT.
 
 **Status:** early development. You can view, add, edit and delete `Host`
-and `Match` blocks. Global settings are read-only for now.
+and `Match` blocks, and sort and group them. Global settings are read-only
+for now.
 
-![SSH Cfg Mgr showing a list of hosts](docs/screenshot.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/ui-dark.svg" />
+  <img src="docs/ui-light.svg" alt="SSH Config Manager: hosts in groups, a turned-off host, a Match block and an included file on the left; the settings of host web-1 on the right" />
+</picture>
 
-![Editing a host](docs/screenshot-edit.png)
+Edit a value in place. Values with several parts, such as `LocalForward`,
+have a builder:
+
+![The LocalForward builder dialog over the host's settings](docs/ui-builder.svg)
+
+Every save makes a backup. History shows what restoring one would change:
+
+![History: backups on the left, a line diff on the right](docs/ui-history.svg)
+
+![Settings: theme, how new groups are saved, and history](docs/ui-settings.svg)
+
+The images are made from the app with made-up data (`example.com` names
+and documentation IP addresses).
 
 ## How a save works
 
@@ -29,8 +45,55 @@ indentation and the order of lines stay. If `~/.ssh/config` is a symlink
 (for example, from a dotfiles manager), the app writes to the real file and
 keeps the link.
 
+The **History** button lists these backups. Choose one to see what
+restoring it would change (a line diff), then restore it. A restore is a
+normal save: it is checked with `ssh -G`, and the file before the restore
+is backed up too, so a restore can be undone.
+
 New hosts go before `Host *`, because OpenSSH uses the first value it
 finds for each keyword.
+
+## Turning a host off
+
+The eye button on each row turns a block off or on. Off adds `#~` to the
+start of the block's lines, so OpenSSH reads them as comments:
+
+```
+#~Host old-server
+#~    HostName 10.0.0.9
+```
+
+On removes the `#~` again, so you get back exactly the text you had. The
+app uses `#~`, not plain `#`, because a normal comment can also start with
+`# Host`.
+
+## Include files
+
+Hosts in files brought in by `Include` are listed in their own section,
+one per file. Files inside `~/.ssh` can be edited like the main config
+(each save is checked with `ssh -G` and backed up next to that file).
+Files outside `~/.ssh`, such as `~/.orbstack/ssh/config`, are managed by
+other apps and stay read-only. The app follows OpenSSH's rules: several paths
+per line, wildcards in lexical order, `~`, `${VAR}`, and relative paths
+in `~/.ssh`. An `Include` inside a `Host` or `Match` block is shown with
+"only for ...". A path with a token such as `%h` depends on the host, so
+it is shown with that reason instead. A save is checked with `ssh -G`,
+which also reads the included files.
+
+## Host groups
+
+You can put each `Host` or `Match` block in a group. The sidebar shows
+the groups as sections. The app reads the group from the file, in one of
+two forms:
+
+| Form | In the file | Notes |
+|---|---|---|
+| Comment (default) | `# group: Work` on the line above the block | OpenSSH ignores comments. Works with every OpenSSH version. |
+| Tag | `Tag work` in the block | One word. Needs OpenSSH 9.4 or later. You can use `Match tagged work` for settings that apply to the whole group. |
+
+A block that already has a group keeps its form. A new group uses the
+form you choose in Settings (the gear button). Settings and the sort
+order are kept on your computer, not in the config.
 
 ## Goals
 
@@ -69,7 +132,12 @@ npm run build                  # make an installer (.dmg, .deb, .AppImage, ...)
 cargo test                     # run all tests
 cargo clippy --all-targets     # lint
 cargo run --example list_hosts # list the hosts in your ~/.ssh/config
+node scripts/preview.js        # the UI in a browser, with a fake Tauri API
 ```
+
+The UI is native custom elements (light DOM, ES modules): `ui/store.js`
+holds the state and every call to Rust and emits `change`; `ui/main.js`
+draws the components in `ui/components/` from it.
 
 To try the app on a copy instead of your real config, set
 `SSH_CFG_MGR_CONFIG`:

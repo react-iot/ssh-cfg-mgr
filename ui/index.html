@@ -3,9 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SSH Cfg Mgr</title>
+    <title>SSH Config Manager</title>
     <link rel="stylesheet" href="style.css" />
-    <script src="app.js" defer></script>
+    <script src="builders.js" defer></script>
+    <script src="diff.js" defer></script>
+    <script type="module" src="main.js"></script>
   </head>
   <body>
     <header class="topbar">
@@ -15,23 +17,43 @@
           <img src="assets/logo-lockup-horizontal.svg" alt="ReactIoT" />
         </picture>
         <span class="brand-sep" aria-hidden="true"></span>
-        <span>SSH Cfg Mgr</span>
+        <span>SSH Config Manager</span>
       </div>
-      <code id="path" class="path"></code>
-      <span id="badge" class="badge" hidden></span>
       <span class="spacer"></span>
-      <button id="reload" type="button">Reload</button>
+      <button id="new-host" type="button" class="primary with-icon">
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M8 2.5v11M2.5 8h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+        New host
+      </button>
+      <button id="reload" type="button" class="icon-only" aria-label="Reload the file" title="Reload the file">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3.5H10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+      </button>
+      <button id="history" type="button" class="icon-only" aria-label="History" title="History: view and restore backups">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v3h3M8 5v3.2l2.2 1.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+      </button>
+      <button id="settings" type="button" class="icon-only" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M13.47 6.80 L15.14 7.10 L15.14 8.90 L13.47 9.20 L12.72 11.02 L13.69 12.41 L12.41 13.69 L11.02 12.72 L9.20 13.47 L8.90 15.14 L7.10 15.14 L6.80 13.47 L4.98 12.72 L3.59 13.69 L2.31 12.41 L3.28 11.02 L2.53 9.20 L0.86 8.90 L0.86 7.10 L2.53 6.80 L3.28 4.98 L2.31 3.59 L3.59 2.31 L4.98 3.28 L6.80 2.53 L7.10 0.86 L8.90 0.86 L9.20 2.53 L11.02 3.28 L12.41 2.31 L13.69 3.59 L12.72 4.98Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" /><circle cx="8" cy="8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.2" /></svg>
+      </button>
     </header>
 
     <main class="layout">
-      <aside id="sidebar" class="sidebar">
+      <host-list id="sidebar" class="sidebar">
         <div class="sidebar-tools">
-          <input id="search" type="search" placeholder="Filter hosts" autocomplete="off" spellcheck="false" />
-          <button id="new-host" type="button" class="primary">New host</button>
+          <div class="segmented">
+            <input id="search" type="search" placeholder="Filter hosts" aria-label="Filter hosts" autocomplete="off" spellcheck="false" />
+            <button id="sort" type="button" class="sort" data-sort="file">
+              <svg class="sort-file" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5 2v12M2 11l3 3 3-3M11 14V2M8 5l3-3 3 3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              <svg class="sort-asc" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 2v12M4 10l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              <svg class="sort-desc" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 14V2M4 6l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </button>
+            <button id="add" type="button" class="add" aria-label="Add" title="Add a host or group" aria-haspopup="menu" aria-expanded="false" aria-controls="add-menu"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 2.5v11M2.5 8h11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></button>
+          </div>
+          <div id="add-menu" class="menu" role="menu" aria-label="Add" hidden>
+            <button type="button" role="menuitem" data-add="host">New host</button>
+            <button type="button" role="menuitem" data-add="group">New group</button>
+          </div>
         </div>
         <ul id="list" class="list" role="listbox" aria-label="Hosts"></ul>
-        <p id="count" class="count"></p>
-      </aside>
+      </host-list>
 
       <section class="detail">
         <p id="notice" class="notice" role="status" hidden></p>
@@ -39,6 +61,15 @@
       </section>
     </main>
 
-    <datalist id="keywords"></datalist>
+    <!-- Left part lines up with the sidebar, right part with the detail. -->
+    <status-bar class="statusbar">
+      <span id="count" class="count"></span>
+      <div class="status-file">
+        <code id="path" class="path"></code>
+        <span id="badge" class="badge" hidden></span>
+        <span class="spacer"></span>
+        <span id="sync" class="sync" role="status"></span>
+      </div>
+    </status-bar>
   </body>
 </html>

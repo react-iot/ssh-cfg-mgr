@@ -10,11 +10,12 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "SSH Cfg Mgr",
+        "title": "SSH Config Manager",
         "width": 1040,
         "height": 680,
         "minWidth": 640,
-        "minHeight": 420
+        "minHeight": 420,
+        "dragDropEnabled": false
       }
     ],
     "security": {

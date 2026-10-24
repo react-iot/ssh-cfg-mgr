@@ -193,38 +193,107 @@ fn backup(target: &Path, path: &Path) -> Result<PathBuf, String> {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let mut dest = dir.join(format!("config-{seconds}.bak"));
+    // Named after the file, so files in one folder (config.d/a and
+    // config.d/b) keep separate histories. For ~/.ssh/config this is
+    // config-<seconds>.bak, as before.
+    let file = file_name(path);
+    let mut dest = dir.join(format!("{file}-{seconds}.bak"));
     let mut n = 1;
     while dest.exists() {
-        dest = dir.join(format!("config-{seconds}-{n}.bak"));
+        dest = dir.join(format!("{file}-{seconds}-{n}.bak"));
         n += 1;
     }
     fs::copy(target, &dest).map_err(|e| format!("Cannot make backup {}: {e}", dest.display()))?;
 
-    prune(&dir);
+    prune(&dir, &file);
     Ok(dest)
 }
 
-/// Delete the oldest backups. A failure here does not stop the save.
-fn prune(dir: &Path) {
+/// Delete the oldest backups of one file. A failure here does not stop
+/// the save.
+fn prune(dir: &Path, file: &str) {
+    let backups = backups_in(dir, file);
+    for old in backups.iter().skip(MAX_BACKUPS) {
+        let _ = fs::remove_file(dir.join(&old.name));
+    }
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || "config".to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    )
+}
+
+/// One backup file, for the history list.
+#[derive(serde::Serialize)]
+pub struct Backup {
+    pub name: String,
+    /// When the backup was made, in seconds since 1970.
+    pub time: u64,
+    pub size: u64,
+}
+
+/// The time in a backup name of `file`: `<file>-<seconds>.bak` or
+/// `<file>-<seconds>-<n>.bak`. The file's mtime is no use: on macOS
+/// `fs::copy` keeps the mtime of the config it copied.
+fn backup_time(file: &str, name: &str) -> Option<(u64, u64)> {
+    let stem = name
+        .strip_prefix(file)?
+        .strip_prefix('-')?
+        .strip_suffix(".bak")?;
+    let (seconds, n) = stem.split_once('-').unwrap_or((stem, "0"));
+    Some((seconds.parse().ok()?, n.parse().ok()?))
+}
+
+/// Backups of `file` in `dir`, newest first.
+fn backups_in(dir: &Path, file: &str) -> Vec<Backup> {
     let Ok(entries) = fs::read_dir(dir) else {
-        return;
+        return Vec::new();
     };
-    let mut backups: Vec<(SystemTime, PathBuf)> = entries
+    let mut backups: Vec<(u64, u64, Backup)> = entries
         .filter_map(Result::ok)
-        .filter(|e| {
+        .filter_map(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
-            name.starts_with("config-") && name.ends_with(".bak")
+            let (time, n) = backup_time(file, &name)?;
+            let size = e.metadata().ok()?.len();
+            Some((time, n, Backup { name, time, size }))
         })
-        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
         .collect();
-    if backups.len() <= MAX_BACKUPS {
-        return;
+    backups.sort_by_key(|b| std::cmp::Reverse((b.0, b.1)));
+    backups.into_iter().map(|(_, _, b)| b).collect()
+}
+
+fn backup_dir(path: &Path) -> PathBuf {
+    path.parent().unwrap_or(Path::new(".")).join(BACKUP_DIR)
+}
+
+/// The backups of the config at `path`, newest first.
+pub fn list_backups(path: &Path) -> Vec<Backup> {
+    backups_in(&backup_dir(path), &file_name(path))
+}
+
+/// Delete every backup of the config at `path`. Only backup files are
+/// deleted; the config itself is not touched. Returns how many.
+pub fn clear_backups(path: &Path) -> Result<usize, String> {
+    let dir = backup_dir(path);
+    let mut deleted = 0;
+    for backup in backups_in(&dir, &file_name(path)) {
+        let file = dir.join(&backup.name);
+        fs::remove_file(&file).map_err(|e| format!("Cannot delete {}: {e}", file.display()))?;
+        deleted += 1;
     }
-    backups.sort();
-    for (_, old) in &backups[..backups.len() - MAX_BACKUPS] {
-        let _ = fs::remove_file(old);
+    Ok(deleted)
+}
+
+/// The text of one backup. `name` must be a backup file name, so this
+/// cannot read any other file.
+pub fn read_backup(path: &Path, name: &str) -> Result<String, String> {
+    if name.contains(['/', '\\']) || backup_time(&file_name(path), name).is_none() {
+        return Err(format!("\"{name}\" is not a backup."));
     }
+    let file = backup_dir(path).join(name);
+    fs::read_to_string(&file).map_err(|e| format!("Cannot read {}: {e}", file.display()))
 }
 
 #[cfg(test)]
@@ -322,6 +391,105 @@ mod tests {
         assert_eq!(fs::read_to_string(&real).unwrap(), "Host new\n");
         assert_eq!(backups(&dir).len(), 1, "backup goes next to the link");
         assert!(!dotfiles.join(BACKUP_DIR).exists());
+    }
+
+    #[test]
+    fn backups_are_listed_newest_first_by_name_time() {
+        let dir = temp_dir("history");
+        let path = dir.join("config");
+        let backups = dir.join(BACKUP_DIR);
+        fs::create_dir(&backups).unwrap();
+        for name in [
+            "config-100.bak",
+            "config-300.bak",
+            "config-300-1.bak",
+            "config-200.bak",
+            "notes.txt",
+        ] {
+            fs::write(backups.join(name), name).unwrap();
+        }
+        let names: Vec<String> = list_backups(&path).into_iter().map(|b| b.name).collect();
+        assert_eq!(
+            names,
+            [
+                "config-300-1.bak",
+                "config-300.bak",
+                "config-200.bak",
+                "config-100.bak"
+            ]
+        );
+
+        assert_eq!(
+            read_backup(&path, "config-200.bak").unwrap(),
+            "config-200.bak"
+        );
+        assert!(read_backup(&path, "../config").is_err());
+        assert!(read_backup(&path, "notes.txt").is_err());
+        assert!(read_backup(&path, "config-1.bak/../../x").is_err());
+    }
+
+    #[test]
+    fn broken_included_file_blocks_the_save() {
+        // ssh -G reads Include files, and exits 255 if one is bad.
+        let dir = temp_dir("include");
+        let path = dir.join("config");
+        let extra = dir.join("extra.conf");
+        fs::write(&path, "Host a\n").unwrap();
+        fs::write(&extra, "Host b\n    HostNme typo\n").unwrap();
+        let text = format!("Include {}\nHost a\n    User x\n", extra.display());
+
+        let error = write(&path, &text).unwrap_err();
+        assert!(
+            error.contains("extra.conf: line 2: Bad configuration option: hostnme"),
+            "{error}"
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "Host a\n");
+
+        fs::write(&extra, "Host b\n    User y\n").unwrap();
+        write(&path, &text).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), text);
+    }
+
+    #[test]
+    fn backups_are_kept_per_file() {
+        // config.d/work and config.d/work-eu share a folder, not a history.
+        let dir = temp_dir("perfile");
+        let work = dir.join("work");
+        let work_eu = dir.join("work-eu");
+        fs::write(&work, "Host a\n").unwrap();
+        fs::write(&work_eu, "Host b\n").unwrap();
+        write(&work, "Host a2\n").unwrap();
+        write(&work_eu, "Host b2\n").unwrap();
+        write(&work_eu, "Host b3\n").unwrap();
+
+        let names =
+            |p: &Path| -> Vec<String> { list_backups(p).into_iter().map(|b| b.name).collect() };
+        assert_eq!(names(&work).len(), 1);
+        assert!(names(&work)[0].starts_with("work-"));
+        assert_eq!(names(&work_eu).len(), 2);
+        assert!(names(&work_eu).iter().all(|n| n.starts_with("work-eu-")));
+        let first = &names(&work)[0];
+        assert_eq!(read_backup(&work, first).unwrap(), "Host a\n");
+        assert!(
+            read_backup(&work_eu, first).is_err(),
+            "a backup of another file"
+        );
+    }
+
+    #[test]
+    fn clear_backups_deletes_only_backups() {
+        let dir = temp_dir("clear");
+        let path = dir.join("config");
+        fs::write(&path, "Host a\n").unwrap();
+        let backups = dir.join(BACKUP_DIR);
+        fs::create_dir(&backups).unwrap();
+        for name in ["config-1.bak", "config-2-1.bak", "notes.txt"] {
+            fs::write(backups.join(name), "x").unwrap();
+        }
+        assert_eq!(clear_backups(&path).unwrap(), 2);
+        assert!(list_backups(&path).is_empty());
+        assert!(backups.join("notes.txt").exists());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "Host a\n");
     }
 
     #[test]

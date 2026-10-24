@@ -162,3 +162,273 @@ fn remove_last_block_keeps_missing_final_newline() {
 fn remove_block_out_of_range() {
     assert!(parse().remove_block(9).is_none());
 }
+
+fn is_group(text: &str) -> bool {
+    text.starts_with("# group:")
+}
+
+#[test]
+fn comments_above_are_the_comments_that_move_with_the_block() {
+    let config = parse();
+    assert_eq!(config.comments_above(0), ["# Gateways"]);
+    assert!(config.comments_above(1).is_empty());
+    assert_eq!(config.comments_above(2), ["# Defaults for all hosts"]);
+    assert!(config.comments_above(3).is_empty());
+}
+
+#[test]
+fn set_comment_above_adds_replaces_and_removes() {
+    let mut config = parse();
+
+    assert!(config.set_comment_above(1, is_group, Some("# group: Edge")));
+    let added = SAMPLE.replace("\nHost edge\n", "\n# group: Edge\nHost edge\n");
+    assert_eq!(config.to_string(), added);
+    assert_eq!(config.comments_above(1), ["# group: Edge"]);
+
+    config.set_comment_above(1, is_group, Some("# group: Prod"));
+    assert_eq!(config.to_string(), added.replace("Edge", "Prod"));
+
+    config.set_comment_above(1, is_group, None);
+    assert_eq!(config.to_string(), SAMPLE);
+
+    // Other comments above the block stay.
+    config.set_comment_above(0, is_group, Some("# group: Gw"));
+    assert_eq!(config.comments_above(0), ["# Gateways", "# group: Gw"]);
+    config.set_comment_above(0, is_group, None);
+    assert_eq!(config.to_string(), SAMPLE);
+
+    assert!(!config.set_comment_above(9, is_group, Some("# group: X")));
+}
+
+#[test]
+fn comment_above_goes_with_insert_and_delete() {
+    let mut config = parse();
+    config.set_comment_above(2, is_group, Some("# group: Base"));
+    config.insert_host(2, "new");
+    assert!(config.comments_above(2).is_empty());
+    assert_eq!(
+        config.comments_above(3),
+        ["# Defaults for all hosts", "# group: Base"]
+    );
+
+    config.remove_block(3);
+    assert!(!config.to_string().contains("# group: Base"));
+}
+
+#[test]
+#[should_panic(expected = "not one comment line")]
+fn set_comment_above_rejects_non_comments() {
+    parse().set_comment_above(0, is_group, Some("Host evil"));
+}
+
+#[test]
+fn disable_and_enable_a_block() {
+    let mut config = parse();
+    config.block_mut(0).unwrap().set_enabled(false);
+    let off = SAMPLE.replace(
+        "Host gw\n    User root\n    IdentityFile ~/.ssh/a\n    IdentityFile ~/.ssh/b\n",
+        "#~Host gw\n#~    User root\n#~    IdentityFile ~/.ssh/a\n#~    IdentityFile ~/.ssh/b\n",
+    );
+    assert_eq!(config.to_string(), off);
+
+    // The text parses back to the same disabled block, with its settings.
+    let mut config = SshConfig::parse(&off);
+    assert_eq!(config.to_string(), off);
+    let block = &config.blocks()[0];
+    assert!(!block.is_enabled());
+    assert_eq!(block.pattern(), "gw");
+    assert_eq!(block.get("User"), Some("root"));
+    assert_eq!(config.comments_above(0), ["# Gateways"]);
+
+    // A change to a disabled block stays disabled.
+    config.block_mut(0).unwrap().set("Port", "2222");
+    assert!(config.to_string().contains("#~    Port 2222\n"));
+    config.block_mut(0).unwrap().remove("Port");
+
+    config.block_mut(0).unwrap().set_enabled(true);
+    assert_eq!(config.to_string(), SAMPLE);
+}
+
+#[test]
+fn off_line_in_an_enabled_block_is_not_a_setting() {
+    // OpenSSH reads "#~User b" as a comment, so the block has only User a.
+    let text = "Host a\n    User a\n#~    User b\n";
+    let config = SshConfig::parse(text);
+    assert_eq!(config.to_string(), text);
+    let block = &config.blocks()[0];
+    assert!(block.is_enabled());
+    assert_eq!(block.directives().count(), 1);
+    let global = SshConfig::parse("#~User x\nHost a\n");
+    assert_eq!(global.global_directives().count(), 0);
+}
+
+#[test]
+fn block_text_is_the_block_without_what_follows() {
+    let config = parse();
+    assert_eq!(
+        config.block_text(0).unwrap(),
+        "Host gw\n    User root\n    IdentityFile ~/.ssh/a\n    IdentityFile ~/.ssh/b\n"
+    );
+    assert_eq!(
+        config.block_text(1).unwrap(),
+        "Host edge\n    HostName 10.0.0.5\n"
+    );
+    assert!(config.block_text(9).is_none());
+}
+
+#[test]
+fn set_block_text_replaces_only_the_block() {
+    let mut config = parse();
+    let same = config.block_text(1).unwrap();
+    config.set_block_text(1, &same).unwrap();
+    assert_eq!(config.to_string(), SAMPLE);
+
+    // Trailing blank lines in the text are dropped; the file's spacing and
+    // the comment above the next block stay.
+    config
+        .set_block_text(
+            1,
+            "Host edge edge.local\n  HostName 10.0.0.6\n  Port 2222\n\n\n",
+        )
+        .unwrap();
+    assert_eq!(
+        config.to_string(),
+        SAMPLE.replace(
+            "Host edge\n    HostName 10.0.0.5\n",
+            "Host edge edge.local\n  HostName 10.0.0.6\n  Port 2222\n"
+        )
+    );
+}
+
+#[test]
+fn set_block_text_rules() {
+    let mut config = parse();
+    assert!(config.set_block_text(0, "User x\nHost a\n").is_err());
+    assert!(config.set_block_text(0, "# note\nHost a\n").is_err());
+    assert!(config.set_block_text(0, "Host a\nHost b\n").is_err());
+    assert!(config.set_block_text(0, "").is_err());
+    assert!(config.set_block_text(9, "Host a\n").is_err());
+    assert_eq!(
+        config.to_string(),
+        SAMPLE,
+        "a rejected text changes nothing"
+    );
+}
+
+#[test]
+fn set_block_text_keeps_crlf_and_missing_final_newline() {
+    let mut config = SshConfig::parse("Host a\r\n    User x\r\nHost b\r\n    User y");
+    config.set_block_text(1, "Host b\n    User z\n").unwrap();
+    assert_eq!(
+        config.to_string(),
+        "Host a\r\n    User x\r\nHost b\r\n    User z"
+    );
+}
+
+#[test]
+fn move_block_takes_its_comments_and_closes_the_gap() {
+    let mut config = parse();
+    assert!(config.move_block(1, 0));
+    assert_eq!(
+        config.to_string(),
+        "\
+AddKeysToAgent yes
+
+Host edge
+    HostName 10.0.0.5
+
+# Gateways
+Host gw
+    User root
+    IdentityFile ~/.ssh/a
+    IdentityFile ~/.ssh/b
+
+# Defaults for all hosts
+Host *
+    ServerAliveInterval 30
+"
+    );
+    // Back again gives the original text.
+    assert!(config.move_block(0, 1));
+    assert_eq!(config.to_string(), SAMPLE);
+}
+
+#[test]
+fn move_block_to_the_end_and_out_of_range() {
+    let mut config = parse();
+    assert!(config.move_block(0, 2));
+    assert_eq!(
+        config.to_string(),
+        "\
+AddKeysToAgent yes
+
+Host edge
+    HostName 10.0.0.5
+
+# Defaults for all hosts
+Host *
+    ServerAliveInterval 30
+
+# Gateways
+Host gw
+    User root
+    IdentityFile ~/.ssh/a
+    IdentityFile ~/.ssh/b
+"
+    );
+    assert!(!config.move_block(0, 3));
+    assert!(!config.move_block(3, 0));
+}
+
+#[test]
+fn move_block_keeps_missing_final_newline() {
+    let mut config = SshConfig::parse("Host a\n    User x\n\nHost b\n    User y");
+    config.move_block(1, 0);
+    assert_eq!(
+        config.to_string(),
+        "Host b\n    User y\n\nHost a\n    User x"
+    );
+}
+
+#[test]
+fn include_lines_are_kept_as_directives() {
+    // The parser does not follow Include; it keeps the line as it is.
+    let text = "Include ~/.ssh/config.d/*\n\nHost a\n    Include ~/.ssh/a-extra.conf\n    User x\n";
+    let mut config = SshConfig::parse(text);
+    assert_eq!(config.to_string(), text);
+    let global: Vec<_> = config
+        .global_directives()
+        .map(|d| (d.keyword().to_string(), d.value().to_string()))
+        .collect();
+    assert_eq!(
+        global,
+        [("Include".to_string(), "~/.ssh/config.d/*".to_string())]
+    );
+    assert_eq!(
+        config.blocks()[0].get("Include"),
+        Some("~/.ssh/a-extra.conf")
+    );
+    config.block_mut(0).unwrap().set("User", "y");
+    assert_eq!(config.to_string(), text.replace("User x", "User y"));
+}
+
+#[test]
+fn move_global_directive_reorders_include_lines() {
+    let text = "# Work first\nInclude work.conf\nInclude ~/.orbstack/ssh/config\n\nHost a\n";
+    let mut config = SshConfig::parse(text);
+    assert!(config.move_global_directive(1, 0));
+    assert_eq!(
+        config.to_string(),
+        "# Work first\nInclude ~/.orbstack/ssh/config\nInclude work.conf\n\nHost a\n"
+    );
+    assert!(config.move_global_directive(0, 1));
+    assert_eq!(config.to_string(), text);
+    assert!(!config.move_global_directive(0, 2));
+}
+
+#[test]
+fn move_global_directive_keeps_missing_final_newline() {
+    let mut config = SshConfig::parse("Include a\nInclude b");
+    config.move_global_directive(0, 1);
+    assert_eq!(config.to_string(), "Include b\nInclude a");
+}
