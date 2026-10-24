@@ -326,7 +326,7 @@ function renderList() {
         renderList();
       });
       toggle.setAttribute("aria-expanded", String(!closed));
-      toggle.append(make("span", "chevron", closed ? "▸" : "▾"), make("span", "", group || "No group"), make("span", "group-count", String(members.length)));
+      toggle.append(chevron(), make("span", "", group || "No group"), make("span", "group-count", String(members.length)));
       head.append(toggle);
       dropTarget(head, group);
       list.append(head);
@@ -377,6 +377,16 @@ function listItem(entry) {
     else dropTarget(item, entry.group);
   }
   return item;
+}
+
+// A right-pointing chevron; CSS turns it down when the group is open.
+function chevron() {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  for (const [k, v] of Object.entries({ class: "chevron", viewBox: "0 0 16 16", width: "12", height: "12", "aria-hidden": "true" })) svg.setAttribute(k, v);
+  const path = document.createElementNS(SVG_NS, "path");
+  for (const [k, v] of Object.entries({ d: "M6 3.5 10.5 8 6 12.5", fill: "none", stroke: "currentColor", "stroke-width": "1.8", "stroke-linecap": "round", "stroke-linejoin": "round" })) path.setAttribute(k, v);
+  svg.append(path);
+  return svg;
 }
 
 // Groups made with "New group" that have no hosts yet, and whether the
