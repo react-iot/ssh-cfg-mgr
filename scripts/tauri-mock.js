@@ -79,6 +79,7 @@
         f.blocks[index] = { ...f.blocks[index], kind, pattern: pattern.join(" "), settings: rest.map((l) => l.trim().split(/\s+/)).map(([k, ...v]) => s(k, v.join(" "))) };
         return index;
       }),
+    save_global: ({ revision, settings }) => change(null, revision, (f) => void (f.global = settings)),
     move_global_line: ({ revision, from, to }) => change(null, revision, () => void includes.splice(to, 0, ...includes.splice(from, 1))),
     move_block: ({ revision, from, to }) => change(null, revision, (f) => (f.blocks.splice(to, 0, ...f.blocks.splice(from, 1)), to)),
     set_block_enabled: ({ revision, file, index, enabled }) => change(file, revision, (f) => void (f.blocks[index].enabled = enabled)),

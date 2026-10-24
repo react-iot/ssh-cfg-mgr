@@ -118,11 +118,11 @@ class HostDetail extends HTMLElement {
     }
     this.append(head);
 
-    // Only what the table does not show: why global settings are read-only,
-    // and that a block is turned off.
+    // Only what the table does not show: what global settings are, where an
+    // included block comes from, and that a block is turned off.
     const lead =
       entry.id === GLOBAL_ID
-        ? "These settings are before the first Host or Match line. They apply to all hosts. This version cannot edit them."
+        ? "Lines before the first Host or Match. They apply to every host. OpenSSH uses the first value it finds, so a setting here wins over the same keyword in a block."
         : entry.included
           ? `${entry.readOnly ? "Read-only: outside ~/.ssh. " : ""}From ${entry.source.path}, included by "Include ${entry.source.pattern}" in ${entry.source.from}${entry.source.condition ? `, only for ${entry.source.condition}` : ""}.`
           : entry.enabled
@@ -130,7 +130,7 @@ class HostDetail extends HTMLElement {
           : "Off: commented out with #~, so OpenSSH ignores it.";
     if (lead) this.append(make("p", "lead", lead));
 
-    const editable = entry.id !== GLOBAL_ID && !entry.readOnly;
+    const editable = !entry.readOnly;
     if (entry.settings.length === 0 && !editable) {
       this.append(make("p", "empty", "This block has no settings."));
       return;

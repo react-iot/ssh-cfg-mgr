@@ -302,6 +302,21 @@ async fn move_global_line(
     })
 }
 
+/// Save the settings before the first Host or Match line, which apply to
+/// every host. Comments and Include order stay as they are.
+#[tauri::command]
+async fn save_global(
+    app: tauri::AppHandle,
+    revision: String,
+    settings: Vec<Setting>,
+) -> Result<SaveResult, String> {
+    let settings = clean_settings(settings)?;
+    edit(&app, &revision, |config| {
+        config.edit_global(|global| apply_settings(global, &settings));
+        Ok(None)
+    })
+}
+
 /// Move the block at `from` to position `to`, with the comments above it.
 /// Order matters: OpenSSH uses the first value it finds.
 #[tauri::command]
@@ -593,6 +608,7 @@ pub fn run() {
             move_block,
             clear_backups,
             move_global_line,
+            save_global,
             list_keys
         ])
         .setup(|app| {

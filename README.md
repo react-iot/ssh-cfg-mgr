@@ -26,8 +26,8 @@ A free, open-source desktop app for macOS and Linux that manages your
 
 **Status:** early development. You can view, add, edit and delete `Host`
 and `Match` blocks, and sort and group them. The SSH keys view lists the
-keys in `~/.ssh` and the hosts that use each one. Global settings are
-read-only for now.
+keys in `~/.ssh` and the hosts that use each one. Global settings (the
+lines before the first `Host`) can be edited the same way.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/ui-dark.svg" />

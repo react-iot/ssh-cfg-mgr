@@ -200,7 +200,7 @@ impl Block {
             .directives()
             .next()
             .map(|d| d.indent().to_string())
-            .unwrap_or_else(|| DEFAULT_INDENT.to_string());
+            .unwrap_or_else(|| self.default_indent().to_string());
         let eol = self.eol_style();
         let off = self.header.off;
 
@@ -223,6 +223,16 @@ impl Block {
         );
         line.off = off;
         self.body.insert(pos, line);
+    }
+
+    /// Lines in a block are indented; lines before the first block (see
+    /// [`SshConfig::edit_global`], whose header has no keyword) are not.
+    fn default_indent(&self) -> &'static str {
+        if self.header().keyword().is_empty() {
+            ""
+        } else {
+            DEFAULT_INDENT
+        }
     }
 
     fn remove_line(&mut self, pos: usize) {
@@ -314,6 +324,32 @@ impl SshConfig {
             .iter()
             .filter(|line| !line.off)
             .filter_map(Line::directive)
+    }
+
+    /// Edit the lines before the first block with the [`Block`] methods
+    /// (`set`, `set_all`, `remove`). `f` gets a block with no header; it is
+    /// never written. New lines have no indent and use the file's line
+    /// ending.
+    ///
+    /// ```
+    /// use sshconfig_lossless::SshConfig;
+    ///
+    /// let mut config = SshConfig::parse("Host a\n");
+    /// config.edit_global(|g| g.set("AddKeysToAgent", "yes"));
+    /// assert_eq!(config.to_string(), "AddKeysToAgent yes\nHost a\n");
+    /// ```
+    pub fn edit_global<R>(&mut self, f: impl FnOnce(&mut Block) -> R) -> R {
+        let header = Line::new(
+            LineKind::Directive(Directive::new("", "", "")),
+            &self.eol_style(),
+        );
+        let mut global = Block {
+            header,
+            body: std::mem::take(&mut self.global),
+        };
+        let result = f(&mut global);
+        self.global = global.body;
+        result
     }
 
     /// All `Host` and `Match` blocks, in file order.
