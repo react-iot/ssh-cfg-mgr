@@ -366,9 +366,11 @@ function renderList() {
     if (filter && !members.length) return;
     const key = `file:${file.path}`;
     const closed = !filter && prefs.collapsed.includes(key);
-    const head = sectionHead(`Included: ${file.path}`, key, members.length, closed);
+    // Files in ~/.ssh are shown by their name there; others by full path.
+    const short = file.path.startsWith("~/.ssh/") ? file.path.slice("~/.ssh/".length) : file.path;
+    const head = sectionHead(`INC: ${short}`, key, members.length, closed);
     head.classList.add("include-head");
-    head.title = `From "Include ${file.pattern}" in ${file.from}${file.condition ? `, only for ${file.condition}` : ""}. Read-only.`;
+    head.title = `${file.path}: from "Include ${file.pattern}" in ${file.from}${file.condition ? `, only for ${file.condition}` : ""}. Read-only.`;
     list.append(head);
     if (closed) return;
     const note = file.error ?? (members.length ? "" : "No hosts in this file.");
