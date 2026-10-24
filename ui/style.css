@@ -143,6 +143,17 @@ input, select {
   color: var(--text);
   min-width: 0;
 }
+
+/* Our own select look: the native WebKit one ignores padding and colors.
+   The chevron is mid-grey, so it works in light and dark. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 6px 30px 6px 10px;
+  background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4.5 6.5 8 10l3.5-3.5' fill='none' stroke='%238a8f98' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 9px center / 14px;
+  font-family: var(--sans);
+  cursor: pointer;
+}
 input.mono { font-family: var(--mono); font-size: 13px; }
 
 .layout { flex: 1; display: flex; min-height: 0; }
@@ -247,6 +258,7 @@ td:has(.value-button, .value-editor) { padding: 3px 6px; }
 .value-button { display: block; width: 100%; padding: 5px 6px; border: 1px solid transparent; background: none; text-align: left; word-break: break-all; cursor: text; }
 .value-button:hover { border-color: var(--border); background: var(--row-alt); }
 .value-editor { flex: 1; min-width: 0; font-family: var(--mono); font-size: 13px; padding: 4px 6px; }
+select.value-editor { padding-right: 30px; }
 .add-row td { background: var(--row-alt); }
 .add-row td:first-child { padding: 3px 6px; }
 .value-line { display: flex; align-items: center; gap: 6px; }
@@ -265,7 +277,7 @@ td:has(.value-button, .value-editor) { padding: 3px 6px; }
 
 textarea.raw { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font: 13px/1.5 var(--mono); tab-size: 4; resize: vertical; }
 textarea.raw:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.add-row select { width: 100%; padding: 4px 6px; font-family: var(--sans); }
+.add-row select { width: 100%; }
 .detail-head h1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .kind-label { flex: none; }
 .title-button { width: auto; min-width: 0; font: inherit; color: inherit; }
