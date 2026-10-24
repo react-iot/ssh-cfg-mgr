@@ -97,6 +97,7 @@ function entries() {
       kind: block.kind,
       name: block.pattern,
       settings: block.settings,
+      enabled: block.enabled,
       ...groupOf(block),
     });
   });
@@ -180,8 +181,41 @@ function listItem(entry) {
   const target = connectTarget(entry);
   if (target) text.append(make("span", "sub", target));
   item.append(text);
+  if (entry.id !== GLOBAL_ID) {
+    item.classList.toggle("off", !entry.enabled);
+    item.append(visibilityButton(entry));
+  }
   item.addEventListener("click", () => select(entry.id));
   return item;
+}
+
+const EYE = "M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z";
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+// Eye when the block is on, crossed-out eye when it is off. Click to switch.
+function visibilityButton(entry) {
+  const label = entry.enabled ? `Turn off ${entry.name}` : `Turn on ${entry.name}`;
+  const node = button("", "visibility", (event) => {
+    event.stopPropagation();
+    setEnabled(Number(entry.id), !entry.enabled);
+  });
+  node.title = entry.enabled ? "On. Click to comment it out." : "Off (commented out). Click to turn on.";
+  node.setAttribute("aria-label", label);
+  node.setAttribute("aria-pressed", String(entry.enabled));
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("width", "15");
+  svg.setAttribute("height", "15");
+  svg.setAttribute("aria-hidden", "true");
+  const shapes = [["path", { d: EYE }], ["circle", { cx: "8", cy: "8", r: "2" }]];
+  if (!entry.enabled) shapes.push(["path", { d: "M2.5 13.5 13.5 2.5" }]);
+  for (const [tag, attrs] of shapes) {
+    const shape = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) shape.setAttribute(k, v);
+    svg.append(shape);
+  }
+  node.append(svg);
+  return node;
 }
 
 // ---- Detail: view ----
@@ -255,7 +289,7 @@ function renderView(detail) {
   const lead =
     entry.id === GLOBAL_ID
       ? "These settings are before the first Host or Match line. They apply to all hosts. This version cannot edit them."
-      : `${entry.group ? `Group: ${entry.group}. ` : ""}${plural(entry.settings.length, "setting")}. The first value of each keyword is the one OpenSSH uses.`;
+      : `${entry.enabled ? "" : "Off: commented out with #~, so OpenSSH ignores it. "}${entry.group ? `Group: ${entry.group}. ` : ""}${plural(entry.settings.length, "setting")}. The first value of each keyword is the one OpenSSH uses.`;
   detail.append(make("p", "lead", lead));
 
   if (entry.settings.length === 0) {
@@ -449,6 +483,21 @@ async function remove(index) {
   } catch (error) {
     confirmingDelete = false;
     render();
+    showNotice(String(error), "error");
+  }
+}
+
+// Unlike a save, this keeps the current selection: the user clicked a row's
+// button, not the row.
+async function setEnabled(index, enabled) {
+  clearNotice();
+  try {
+    const result = await invoke("set_block_enabled", { revision: config.revision, index, enabled });
+    config = result.config;
+    render();
+    const message = enabled ? "Turned on." : "Turned off (commented out).";
+    showNotice(result.backup ? `${message} Backup: ${result.backup}` : message);
+  } catch (error) {
     showNotice(String(error), "error");
   }
 }

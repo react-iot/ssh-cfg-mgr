@@ -33,6 +33,20 @@ keeps the link.
 New hosts go before `Host *`, because OpenSSH uses the first value it
 finds for each keyword.
 
+## Turning a host off
+
+The eye button on each row turns a block off or on. Off adds `#~` to the
+start of the block's lines, so OpenSSH reads them as comments:
+
+```
+#~Host old-server
+#~    HostName 10.0.0.9
+```
+
+On removes the `#~` again, so you get back exactly the text you had. The
+app uses `#~`, not plain `#`, because a normal comment can also start with
+`# Host`.
+
 ## Host groups
 
 You can put each `Host` or `Match` block in a group. The sidebar shows

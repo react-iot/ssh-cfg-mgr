@@ -42,6 +42,8 @@ struct BlockView {
     settings: Vec<Setting>,
     /// The name from a `# group: <name>` comment above the block.
     group_comment: Option<String>,
+    /// False if the block is turned off (its lines start with `#~`).
+    enabled: bool,
 }
 
 impl BlockView {
@@ -56,6 +58,7 @@ impl BlockView {
                 .into_iter()
                 .find_map(group_from_comment)
                 .map(str::to_string),
+            enabled: block.is_enabled(),
         }
     }
 }
@@ -216,6 +219,24 @@ async fn delete_block(
     })
 }
 
+/// Turn the block at `index` on or off. Off comments it out with `#~`, so
+/// OpenSSH ignores it; on restores it.
+#[tauri::command]
+async fn set_block_enabled(
+    app: tauri::AppHandle,
+    revision: String,
+    index: usize,
+    enabled: bool,
+) -> Result<SaveResult, String> {
+    edit(&app, &revision, |config| {
+        config
+            .block_mut(index)
+            .ok_or_else(|| CHANGED_ON_DISK.to_string())?
+            .set_enabled(enabled);
+        Ok(Some(index))
+    })
+}
+
 /// Read the file, check that it did not change since the UI loaded it,
 /// apply `change`, and save.
 fn edit(
@@ -250,12 +271,13 @@ fn edit(
 }
 
 /// New hosts go before `Host *`. OpenSSH uses the first value it finds, so
-/// a host after `Host *` cannot override the defaults in it.
+/// a host after `Host *` cannot override the defaults in it. A turned-off
+/// `Host *` does not count.
 fn new_host_index(config: &SshConfig) -> usize {
     config
         .blocks()
         .iter()
-        .position(|b| b.is_host() && b.patterns() == ["*"])
+        .position(|b| b.is_enabled() && b.is_host() && b.patterns() == ["*"])
         .unwrap_or(config.blocks().len())
 }
 
@@ -350,7 +372,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             load_config,
             save_block,
-            delete_block
+            delete_block,
+            set_block_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running SSH Cfg Mgr");
@@ -393,6 +416,8 @@ mod tests {
         assert_eq!(new_host_index(&config), 1);
         let config = SshConfig::parse("Host a\n");
         assert_eq!(new_host_index(&config), 1);
+        let config = SshConfig::parse("#~Host *\nHost a\nHost *\n");
+        assert_eq!(new_host_index(&config), 2);
     }
 
     #[test]

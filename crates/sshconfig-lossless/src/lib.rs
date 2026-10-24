@@ -20,7 +20,7 @@
 
 mod line;
 
-pub use line::{Directive, Line, LineKind};
+pub use line::{Directive, Line, LineKind, OFF_PREFIX};
 
 use std::fmt;
 
@@ -36,12 +36,36 @@ pub struct Block {
 impl Block {
     fn new(keyword: &str, value: &str, eol: &str) -> Self {
         Block {
-            header: Line {
-                kind: LineKind::Directive(Directive::new("", keyword, value)),
-                eol: eol.to_string(),
-            },
+            header: Line::new(LineKind::Directive(Directive::new("", keyword, value)), eol),
             body: Vec::new(),
         }
+    }
+
+    /// False if the block is turned off: each of its lines starts with
+    /// [`OFF_PREFIX`], so OpenSSH ignores it.
+    pub fn is_enabled(&self) -> bool {
+        !self.header.off
+    }
+
+    /// Turn the block on or off. Off adds [`OFF_PREFIX`] to the header and
+    /// to each directive; on removes it from every line. Blank lines and
+    /// comments stay as they are, so turning a block off and on again gives
+    /// the same text.
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.header.off = !enabled;
+        for line in &mut self.body {
+            if enabled {
+                line.off = false;
+            } else if line.directive().is_some() {
+                line.off = true;
+            }
+        }
+    }
+
+    /// A line is part of the block if it is on or off the same as the
+    /// header. OpenSSH ignores a `#~` line in an enabled block, so we do too.
+    fn is_live(&self, line: &Line) -> bool {
+        line.off == self.header.off
     }
 
     fn header_mut(&mut self) -> &mut Directive {
@@ -78,7 +102,10 @@ impl Block {
 
     /// All directives in this block, in file order.
     pub fn directives(&self) -> impl Iterator<Item = &Directive> {
-        self.body.iter().filter_map(Line::directive)
+        self.body
+            .iter()
+            .filter(|line| self.is_live(line))
+            .filter_map(Line::directive)
     }
 
     /// The value of the first directive with this keyword. OpenSSH uses
@@ -150,7 +177,9 @@ impl Block {
         self.body
             .iter()
             .enumerate()
-            .filter(|(_, line)| line.directive().is_some_and(|d| d.is(keyword)))
+            .filter(|(_, line)| {
+                self.is_live(line) && line.directive().is_some_and(|d| d.is(keyword))
+            })
             .map(|(i, _)| i)
             .collect()
     }
@@ -160,7 +189,7 @@ impl Block {
     fn default_insert_pos(&self) -> usize {
         self.body
             .iter()
-            .rposition(|line| line.directive().is_some())
+            .rposition(|line| self.is_live(line) && line.directive().is_some())
             .map_or(0, |i| i + 1)
     }
 
@@ -173,6 +202,7 @@ impl Block {
             .map(|d| d.indent().to_string())
             .unwrap_or_else(|| DEFAULT_INDENT.to_string());
         let eol = self.eol_style();
+        let off = self.header.off;
 
         // If the line before the new one was the last line of the file and
         // had no newline, move the "no newline" to the new line.
@@ -187,13 +217,12 @@ impl Block {
             eol
         };
 
-        self.body.insert(
-            pos,
-            Line {
-                kind: LineKind::Directive(Directive::new(&indent, keyword, value)),
-                eol: new_eol,
-            },
+        let mut line = Line::new(
+            LineKind::Directive(Directive::new(&indent, keyword, value)),
+            &new_eol,
         );
+        line.off = off;
+        self.body.insert(pos, line);
     }
 
     fn remove_line(&mut self, pos: usize) {
@@ -271,7 +300,10 @@ impl SshConfig {
 
     /// Directives before the first block.
     pub fn global_directives(&self) -> impl Iterator<Item = &Directive> {
-        self.global.iter().filter_map(Line::directive)
+        self.global
+            .iter()
+            .filter(|line| !line.off)
+            .filter_map(Line::directive)
     }
 
     /// All `Host` and `Match` blocks, in file order.
@@ -437,10 +469,7 @@ impl SshConfig {
             (Some(i), None) => {
                 lines.remove(i);
             }
-            (None, Some(text)) => lines.push(Line {
-                kind: LineKind::Comment(text.to_string()),
-                eol,
-            }),
+            (None, Some(text)) => lines.push(Line::new(LineKind::Comment(text.to_string()), &eol)),
             (None, None) => {}
         }
         true

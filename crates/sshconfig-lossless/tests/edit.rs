@@ -220,3 +220,44 @@ fn comment_above_goes_with_insert_and_delete() {
 fn set_comment_above_rejects_non_comments() {
     parse().set_comment_above(0, is_group, Some("Host evil"));
 }
+
+#[test]
+fn disable_and_enable_a_block() {
+    let mut config = parse();
+    config.block_mut(0).unwrap().set_enabled(false);
+    let off = SAMPLE.replace(
+        "Host gw\n    User root\n    IdentityFile ~/.ssh/a\n    IdentityFile ~/.ssh/b\n",
+        "#~Host gw\n#~    User root\n#~    IdentityFile ~/.ssh/a\n#~    IdentityFile ~/.ssh/b\n",
+    );
+    assert_eq!(config.to_string(), off);
+
+    // The text parses back to the same disabled block, with its settings.
+    let mut config = SshConfig::parse(&off);
+    assert_eq!(config.to_string(), off);
+    let block = &config.blocks()[0];
+    assert!(!block.is_enabled());
+    assert_eq!(block.pattern(), "gw");
+    assert_eq!(block.get("User"), Some("root"));
+    assert_eq!(config.comments_above(0), ["# Gateways"]);
+
+    // A change to a disabled block stays disabled.
+    config.block_mut(0).unwrap().set("Port", "2222");
+    assert!(config.to_string().contains("#~    Port 2222\n"));
+    config.block_mut(0).unwrap().remove("Port");
+
+    config.block_mut(0).unwrap().set_enabled(true);
+    assert_eq!(config.to_string(), SAMPLE);
+}
+
+#[test]
+fn off_line_in_an_enabled_block_is_not_a_setting() {
+    // OpenSSH reads "#~User b" as a comment, so the block has only User a.
+    let text = "Host a\n    User a\n#~    User b\n";
+    let config = SshConfig::parse(text);
+    assert_eq!(config.to_string(), text);
+    let block = &config.blocks()[0];
+    assert!(block.is_enabled());
+    assert_eq!(block.directives().count(), 1);
+    let global = SshConfig::parse("#~User x\nHost a\n");
+    assert_eq!(global.global_directives().count(), 0);
+}
