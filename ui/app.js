@@ -460,6 +460,27 @@ for (const keyword of KEYWORDS) {
 }
 
 el("search").addEventListener("input", renderList);
+
+// The filter field shows only when the filter button is on. Closing it
+// clears the filter, so no host is hidden by a field you cannot see.
+function showFilter(show) {
+  const search = el("search");
+  search.hidden = !show;
+  el("filter").setAttribute("aria-expanded", String(show));
+  if (show) {
+    search.focus();
+  } else if (search.value) {
+    search.value = "";
+    renderList();
+  }
+}
+el("filter").addEventListener("click", () => showFilter(el("search").hidden));
+el("search").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    showFilter(false);
+    el("filter").focus();
+  }
+});
 for (const [key, id] of [["sort", "sort"], ["groupMode", "group-mode"]]) {
   const select = el(id);
   // An unknown stored value falls back to the first option.

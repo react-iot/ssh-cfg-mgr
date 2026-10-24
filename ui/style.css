@@ -93,7 +93,17 @@ button.primary:hover { filter: brightness(1.08); }
 button.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 550; }
 button.icon { padding: 4px 10px; font-size: 16px; line-height: 1; color: var(--muted); }
 button.icon:hover { color: var(--danger); border-color: var(--danger); }
-button.add { padding: 2px 11px; font-size: 20px; line-height: 1; }
+/* Buttons and selects joined into one control: shared borders, outer corners round. */
+.segmented { display: flex; }
+.segmented > * { height: 32px; margin: 0; border-radius: 0; background: var(--bg); }
+.segmented > * + * { margin-left: -1px; }
+.segmented > :first-child { border-radius: 6px 0 0 6px; }
+.segmented > :last-child { border-radius: 0 6px 6px 0; }
+.segmented > :hover, .segmented > :focus-visible { position: relative; }
+.segmented select { flex: 1; }
+.segmented button { display: grid; place-items: center; padding: 0 11px; color: var(--muted); }
+.segmented button[aria-expanded="true"] { color: var(--accent-ink); background: var(--accent-soft); }
+button.add { font-size: 20px; font-weight: 500; line-height: 1; color: var(--accent-ink); }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 input, select {
@@ -117,9 +127,8 @@ input.mono { font-family: var(--mono); font-size: 13px; }
   background: var(--panel);
 }
 
-.sidebar-tools { display: flex; gap: 8px; margin: 12px; }
-#search, #sort { background: var(--bg); }
-#search { flex: 1; }
+.sidebar-tools { display: flex; flex-direction: column; gap: 8px; margin: 12px; }
+#search { background: var(--bg); }
 
 .sidebar.locked .list,
 .sidebar.locked .sidebar-tools,
