@@ -336,7 +336,8 @@ function renderList() {
     // A filter shows matches in closed groups too, so nothing is hidden.
     const closed = hasGroups && !filter && prefs.collapsed.includes(group);
     if (hasGroups) {
-      const head = sectionHead(group || "No group", group, members.length, closed);
+      // A folder icon for real groups; "No group" is not one.
+      const head = sectionHead(group || "No group", group, members.length, closed, group ? FOLDER : null);
       // An empty group exists only here (the file has no hosts in it), so
       // removing it changes nothing on disk.
       if (!members.length && newGroups.includes(group)) {
