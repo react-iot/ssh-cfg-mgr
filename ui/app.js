@@ -192,7 +192,8 @@ function listItem(entry) {
 const EYE = "M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z";
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-// Eye when the block is on, crossed-out eye when it is off. Click to switch.
+// A crossed-out eye: always shown on a hidden block (its state), and on
+// hover over a visible block (the action "hide"). Click to switch.
 function visibilityButton(entry) {
   const label = entry.enabled ? `Turn off ${entry.name}` : `Turn on ${entry.name}`;
   const node = button("", "visibility", (event) => {
@@ -207,8 +208,11 @@ function visibilityButton(entry) {
   svg.setAttribute("width", "15");
   svg.setAttribute("height", "15");
   svg.setAttribute("aria-hidden", "true");
-  const shapes = [["path", { d: EYE }], ["circle", { cx: "8", cy: "8", r: "2" }]];
-  if (!entry.enabled) shapes.push(["path", { d: "M2.5 13.5 13.5 2.5" }]);
+  const shapes = [
+    ["path", { d: EYE }],
+    ["circle", { cx: "8", cy: "8", r: "2" }],
+    ["path", { d: "M2.5 13.5 13.5 2.5" }],
+  ];
   for (const [tag, attrs] of shapes) {
     const shape = document.createElementNS(SVG_NS, tag);
     for (const [k, v] of Object.entries(attrs)) shape.setAttribute(k, v);
