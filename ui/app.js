@@ -55,8 +55,9 @@ const VALUE_TYPES = {
   connectionattempts: { min: 1 },
 };
 
-// An input for one value, of the right kind for the keyword. onDone(value)
-// runs on Enter or on a choice; onCancel on Escape.
+// An input for one value, of the right kind for the keyword, with a tick
+// and a cross. Only the tick (or Enter) saves: onDone(value). The cross
+// (or Escape) runs onCancel. Returns the line; .input is the field.
 function valueEditor(keyword, current, onDone, onCancel) {
   const type = VALUE_TYPES[keyword.toLowerCase()] ?? {};
   let input;
@@ -67,7 +68,6 @@ function valueEditor(keyword, current, onDone, onCancel) {
     if (!current) input.append(Object.assign(make("option", "", "Choose…"), { value: "" }));
     for (const choice of choices) input.append(Object.assign(make("option", "", choice), { value: choice }));
     input.value = current;
-    input.addEventListener("change", () => input.value && onDone(input.value));
   } else {
     input = make("input", "mono");
     input.value = current;
@@ -90,16 +90,27 @@ function valueEditor(keyword, current, onDone, onCancel) {
   }
   input.classList.add("value-editor");
   input.setAttribute("aria-label", `Value for ${keyword || "new keyword"}`);
+
+  const done = () => {
+    if (input.reportValidity() && input.value.trim()) onDone(input.value.trim());
+  };
   input.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       event.stopPropagation();
       onCancel();
-    } else if (event.key === "Enter" && input.tagName === "INPUT") {
+    } else if (event.key === "Enter") {
       event.preventDefault();
-      if (input.reportValidity() && input.value.trim()) onDone(input.value.trim());
+      done();
     }
   });
-  return input;
+
+  const tick = iconButton(TICK, `Save ${keyword}`, done);
+  tick.classList.add("primary");
+  const cross = iconButton(CROSS, "Cancel", onCancel);
+  const line = make("div", "value-line");
+  line.append(input, tick, cross);
+  line.input = input;
+  return line;
 }
 
 const el = (id) => document.getElementById(id);
@@ -111,7 +122,9 @@ let editing = null;
 let confirmingDelete = false;
 // In the detail table: the row whose value is being edited, and the
 // keyword chosen in the add row.
+// A row number, or PATTERN_ROW for the block's name in the heading.
 let inlineRow = null;
+const PATTERN_ROW = "pattern";
 let addKeyword = "";
 
 // View preferences, kept per user in this app's local storage. Storage can
@@ -351,7 +364,32 @@ function renderView(detail) {
   }
 
   const head = make("div", "detail-head");
-  head.append(make("h1", "", entry.kind ? `${entry.kind} ${entry.name}` : entry.name));
+  const title = make("h1");
+  if (entry.id === GLOBAL_ID) {
+    title.textContent = entry.name;
+  } else if (inlineRow === PATTERN_ROW) {
+    // Edit the Host pattern or Match criteria in place.
+    const editor = valueEditor(
+      entry.kind,
+      entry.name,
+      (pattern) => saveSettings(entry, entry.settings, pattern),
+      () => {
+        inlineRow = null;
+        render();
+      },
+    );
+    editor.input.classList.add("pattern-editor");
+    title.append(make("span", "kind-label", entry.kind), editor);
+    queueMicrotask(() => editor.input.focus());
+  } else {
+    const name = button(entry.name, "value-button title-button", () => {
+      inlineRow = PATTERN_ROW;
+      render();
+    });
+    name.title = "Click to rename";
+    title.append(make("span", "kind-label", entry.kind), name);
+  }
+  head.append(title);
   if (entry.id !== GLOBAL_ID) {
     const actions = make("div", "actions");
     if (confirmingDelete) {
@@ -364,7 +402,8 @@ function renderView(detail) {
         }),
       );
     } else {
-      actions.append(button("Edit", "primary", () => startEdit(entry)));
+      // Values are edited in the table; this opens the whole block as a form.
+      actions.append(button("Edit Raw", "", () => startEdit(entry)));
       // Only a Host can be copied: a new block is always a Host.
       if (entry.kind === "Host") {
         actions.append(button("Duplicate", "", () => startEdit({ ...entry, id: null, name: `${entry.name}-copy`, enabled: true })));
@@ -412,7 +451,7 @@ function renderView(detail) {
         },
       );
       cell.append(editor);
-      queueMicrotask(() => editor.focus());
+      queueMicrotask(() => editor.input.focus());
     } else {
       // Click the value to change it.
       const value = button(setting.value, "value-button", () => {
@@ -447,20 +486,12 @@ function addRow(entry) {
   const valueCell = make("td");
   if (addKeyword) {
     const add = (value) => saveSettings(entry, [...entry.settings, { keyword: addKeyword, value }]);
-    const editor = valueEditor(addKeyword, "", add, () => {
-      addKeyword = "";
-      render();
-    });
-    const line = make("div", "add-value");
-    line.append(editor);
-    if (editor.tagName === "INPUT") {
-      const tick = iconButton(TICK, `Add ${addKeyword}`, () => {
-        if (editor.reportValidity() && editor.value.trim()) add(editor.value.trim());
-      });
-      tick.classList.add("primary");
-      line.append(tick);
-    }
-    valueCell.append(line);
+    valueCell.append(
+      valueEditor(addKeyword, "", add, () => {
+        addKeyword = "";
+        render();
+      }),
+    );
   }
   const keywordCell = make("td");
   keywordCell.append(pick);
@@ -469,7 +500,7 @@ function addRow(entry) {
 }
 
 // Save a block with new settings, from the detail table. The group stays.
-async function saveSettings(entry, settings) {
+async function saveSettings(entry, settings, pattern = entry.name) {
   clearNotice();
   const groupMode = entry.groupMode ?? prefs.newGroupMode;
   let group = entry.group;
@@ -482,7 +513,7 @@ async function saveSettings(entry, settings) {
     const result = await invoke("save_block", {
       revision: config.revision,
       index: Number(entry.id),
-      pattern: entry.name,
+      pattern,
       settings,
       group,
       groupMode,
@@ -496,6 +527,7 @@ async function saveSettings(entry, settings) {
 }
 
 const TICK = "M3 8.5l3.2 3.2L13 4.8";
+const CROSS = "M4 4l8 8M12 4l-8 8";
 const TRASH ="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v4.5M9.2 6.5v4.5";
 
 function iconButton(path, label, onClick) {

@@ -239,12 +239,18 @@ td:last-child { font-family: var(--mono); word-break: break-all; }
 td:has(.value-button, .value-editor) { padding: 3px 6px; }
 .value-button { display: block; width: 100%; padding: 5px 6px; border: 1px solid transparent; background: none; text-align: left; word-break: break-all; cursor: text; }
 .value-button:hover { border-color: var(--border); background: var(--row-alt); }
-.value-editor { width: 100%; font-family: var(--mono); font-size: 13px; padding: 4px 6px; }
+.value-editor { flex: 1; min-width: 0; font-family: var(--mono); font-size: 13px; padding: 4px 6px; }
 .add-row td { background: var(--row-alt); }
 .add-row td:first-child { padding: 3px 6px; }
-.add-value { display: flex; align-items: center; gap: 6px; }
-.add-value button { flex: none; height: 28px; color: var(--on-accent); }
+.value-line { display: flex; align-items: center; gap: 6px; }
+.value-line button { flex: none; height: 28px; }
+.value-line button.primary { color: var(--on-accent); }
 .add-row select { width: 100%; padding: 4px 6px; font-family: var(--sans); }
+.detail-head h1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.kind-label { flex: none; }
+.title-button { width: auto; min-width: 0; font: inherit; color: inherit; }
+.detail-head .value-line { flex: 1; }
+.pattern-editor { font-size: 16px; }
 button.trash:hover { color: var(--danger); border-color: var(--danger); }
 
 .empty { color: var(--muted); max-width: 520px; }
