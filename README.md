@@ -25,8 +25,9 @@ A free, open-source desktop app for macOS and Linux that manages your
 [Sponsor](https://github.com/sponsors/react-iot)
 
 **Status:** early development. You can view, add, edit and delete `Host`
-and `Match` blocks, and sort and group them. Global settings are read-only
-for now.
+and `Match` blocks, and sort and group them. The SSH keys view lists the
+keys in `~/.ssh` and the hosts that use each one. Global settings are
+read-only for now.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/ui-dark.svg" />

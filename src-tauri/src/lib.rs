@@ -5,6 +5,7 @@
 //! gets the return value as JSON.
 
 mod include;
+mod keys;
 mod store;
 
 use serde::{Deserialize, Serialize};
@@ -319,6 +320,14 @@ async fn move_block(
     })
 }
 
+/// The keys in ~/.ssh. Which hosts use them is worked out in the UI, which
+/// has every block.
+#[tauri::command]
+async fn list_keys(app: tauri::AppHandle) -> Result<Vec<keys::Key>, String> {
+    let home = app.path().home_dir().map_err(|e| e.to_string())?;
+    Ok(keys::list(&home.join(".ssh")))
+}
+
 /// The backups of the config, newest first.
 #[tauri::command]
 async fn list_backups(app: tauri::AppHandle) -> Result<Vec<store::Backup>, String> {
@@ -583,7 +592,8 @@ pub fn run() {
             restore_backup,
             move_block,
             clear_backups,
-            move_global_line
+            move_global_line,
+            list_keys
         ])
         .setup(|app| {
             app.set_menu(menu_with_about(app.handle())?)?;

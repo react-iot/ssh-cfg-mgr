@@ -82,6 +82,12 @@
     move_global_line: ({ revision, from, to }) => change(null, revision, () => void includes.splice(to, 0, ...includes.splice(from, 1))),
     move_block: ({ revision, from, to }) => change(null, revision, (f) => (f.blocks.splice(to, 0, ...f.blocks.splice(from, 1)), to)),
     set_block_enabled: ({ revision, file, index, enabled }) => change(file, revision, (f) => void (f.blocks[index].enabled = enabled)),
+    list_keys: () => [
+      { path: `${home}/.ssh/id_ed25519`, has_private: true, kind: "ED25519", bits: 256, fingerprint: "SHA256:Qm9vdGhlZGVtb2tleWZvcnByZXZpZXdvbmx5", comment: "me@laptop" },
+      { path: `${home}/.ssh/id_pi`, has_private: true, kind: "ED25519", bits: 256, fingerprint: "SHA256:cGlrZXlmb3JkZW1vb25seW5vdHJlYWw", comment: "pi" },
+      { path: `${home}/.ssh/old_rsa`, has_private: true, kind: "RSA", bits: 2048, fingerprint: "SHA256:b2xkcnNha2V5bm90dXNlZGFueXdoZXJl", comment: "old work key" },
+      { path: `${home}/.ssh/github`, has_private: false, kind: "ED25519", bits: 256, fingerprint: "SHA256:Z2l0aHVicHVibGljb25seWtleQ", comment: "" },
+    ],
     list_backups: () => backups.map(({ name, time, size }) => ({ name, time, size })),
     read_backup: ({ name }) => backups.find((b) => b.name === name).text,
     clear_backups: () => backups.splice(0).length,

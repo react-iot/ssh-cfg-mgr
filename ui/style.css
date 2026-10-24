@@ -416,3 +416,9 @@ button.trash:hover { color: var(--danger); border-color: var(--danger); }
 
 .empty { color: var(--muted); max-width: 520px; }
 .error { color: var(--warn); }
+
+/* Keys view */
+.keys td:first-child { width: auto; }
+.keys .fingerprint { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.keys .users { display: flex; flex-wrap: wrap; gap: 4px; }
+.keys .users button { padding: 1px 8px; font-size: 12px; }

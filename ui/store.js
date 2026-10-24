@@ -18,6 +18,7 @@ export const GLOBAL_ID = "global";
 export const NEW_ID = "new";
 export const SETTINGS_ID = "settings";
 export const HISTORY_ID = "history";
+export const KEYS_ID = "keys";
 export const BACKUP_DIR = "ssh-cfg-mgr-backups";
 
 // View preferences, kept per user in this app's local storage. Storage can
@@ -56,6 +57,19 @@ const fingerprint = (c) => [c.revision, ...(c.included ?? []).map((f) => `${f.fi
 
 const emptyHistory = () => ({ backups: null, name: null, text: null, confirming: false });
 
+// Key names ssh tries when a host has no IdentityFile (ssh_config(5)).
+const DEFAULT_KEYS = ["id_rsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519", "id_ed25519_sk", "id_xmss", "id_dsa"];
+
+// An IdentityFile value as a full path: no quotes, ~ and %d are the home
+// folder, and a .pub path means its private key.
+// ponytail: other % tokens (%h, %r, ...) are left as written, so such a
+// path matches no key.
+function keyPath(value, home) {
+  let path = value.replace(/^"(.*)"$/, "$1").replaceAll("%d", home);
+  if (path.startsWith("~/")) path = home + path.slice(1);
+  return path.replace(/\.pub$/, "");
+}
+
 class Store extends EventTarget {
   prefs = prefs;
   config = null;
@@ -69,6 +83,8 @@ class Store extends EventTarget {
   newGroups = Array.isArray(prefs.emptyGroups) ? prefs.emptyGroups : [];
   // backups: the list (null while loading); name/text: the chosen backup.
   history = emptyHistory();
+  // The keys in ~/.ssh (null while loading).
+  keys = null;
   // "Clear history" was clicked once, waiting for the second click.
   confirmingClear = false;
   #checking = false;
@@ -195,6 +211,35 @@ class Store extends EventTarget {
     this.loadHistory();
   }
 
+  openKeys() {
+    this.keys = null;
+    this.select(KEYS_ID);
+    this.loadKeys();
+  }
+
+  async loadKeys() {
+    try {
+      this.keys = await invoke("list_keys");
+    } catch (error) {
+      this.notice(String(error), "error");
+      this.keys = [];
+    }
+    this.emit();
+  }
+
+  // Each key with the entries whose IdentityFile names it.
+  keysWithUsers() {
+    const entries = this.entries().filter((e) => e.id === GLOBAL_ID || e.enabled !== false);
+    return (this.keys ?? []).map((key) => ({
+      ...key,
+      name: key.path.split("/").pop(),
+      isDefault: DEFAULT_KEYS.includes(key.path.split("/").pop()),
+      users: entries.filter((e) =>
+        e.settings.some((s) => s.keyword.toLowerCase() === "identityfile" && keyPath(s.value, this.config.home) === key.path),
+      ),
+    }));
+  }
+
   // ---- Load and watch ----
 
   async load() {
@@ -213,7 +258,7 @@ class Store extends EventTarget {
 
   #showConfig(reason = "") {
     const ids = this.entries().map((e) => e.id);
-    if (this.selected !== SETTINGS_ID && this.selected !== HISTORY_ID && !ids.includes(this.selected)) {
+    if (![SETTINGS_ID, HISTORY_ID, KEYS_ID].includes(this.selected) && !ids.includes(this.selected)) {
       this.selected = ids.find((id) => id !== GLOBAL_ID) ?? ids[0] ?? null;
     }
     this.emit(reason);
