@@ -328,6 +328,19 @@ async fn list_keys(app: tauri::AppHandle) -> Result<Vec<keys::Key>, String> {
     Ok(keys::list(&home.join(".ssh")))
 }
 
+/// Make a new Ed25519 key in ~/.ssh. An empty passphrase leaves it
+/// unencrypted. Never overwrites a file.
+#[tauri::command]
+async fn generate_key(
+    app: tauri::AppHandle,
+    name: String,
+    comment: String,
+    passphrase: String,
+) -> Result<keys::Key, String> {
+    let home = app.path().home_dir().map_err(|e| e.to_string())?;
+    keys::generate(&home.join(".ssh"), name.trim(), comment.trim(), &passphrase)
+}
+
 /// The backups of the config, newest first.
 #[tauri::command]
 async fn list_backups(app: tauri::AppHandle) -> Result<Vec<store::Backup>, String> {
@@ -593,7 +606,8 @@ pub fn run() {
             move_block,
             clear_backups,
             move_global_line,
-            list_keys
+            list_keys,
+            generate_key
         ])
         .setup(|app| {
             app.set_menu(menu_with_about(app.handle())?)?;
