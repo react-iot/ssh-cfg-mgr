@@ -414,6 +414,28 @@ mod tests {
     }
 
     #[test]
+    fn broken_included_file_blocks_the_save() {
+        // ssh -G reads Include files, and exits 255 if one is bad.
+        let dir = temp_dir("include");
+        let path = dir.join("config");
+        let extra = dir.join("extra.conf");
+        fs::write(&path, "Host a\n").unwrap();
+        fs::write(&extra, "Host b\n    HostNme typo\n").unwrap();
+        let text = format!("Include {}\nHost a\n    User x\n", extra.display());
+
+        let error = write(&path, &text).unwrap_err();
+        assert!(
+            error.contains("extra.conf: line 2: Bad configuration option: hostnme"),
+            "{error}"
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "Host a\n");
+
+        fs::write(&extra, "Host b\n    User y\n").unwrap();
+        write(&path, &text).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), text);
+    }
+
+    #[test]
     fn clear_backups_deletes_only_backups() {
         let dir = temp_dir("clear");
         let path = dir.join("config");

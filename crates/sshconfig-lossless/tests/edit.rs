@@ -389,3 +389,25 @@ fn move_block_keeps_missing_final_newline() {
         "Host b\n    User y\n\nHost a\n    User x"
     );
 }
+
+#[test]
+fn include_lines_are_kept_as_directives() {
+    // The parser does not follow Include; it keeps the line as it is.
+    let text = "Include ~/.ssh/config.d/*\n\nHost a\n    Include ~/.ssh/a-extra.conf\n    User x\n";
+    let mut config = SshConfig::parse(text);
+    assert_eq!(config.to_string(), text);
+    let global: Vec<_> = config
+        .global_directives()
+        .map(|d| (d.keyword().to_string(), d.value().to_string()))
+        .collect();
+    assert_eq!(
+        global,
+        [("Include".to_string(), "~/.ssh/config.d/*".to_string())]
+    );
+    assert_eq!(
+        config.blocks()[0].get("Include"),
+        Some("~/.ssh/a-extra.conf")
+    );
+    config.block_mut(0).unwrap().set("User", "y");
+    assert_eq!(config.to_string(), text.replace("User x", "User y"));
+}
