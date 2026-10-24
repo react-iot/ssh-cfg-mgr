@@ -470,3 +470,29 @@ fn edit_global_keeps_a_missing_last_newline() {
     config.edit_global(|g| g.set("Port", "22"));
     assert_eq!(config.to_string(), "User x\nPort 22");
 }
+
+#[test]
+fn global_text_stops_at_the_last_directive() {
+    assert_eq!(parse().global_text(), "AddKeysToAgent yes\n");
+    assert_eq!(SshConfig::parse("Host a\n").global_text(), "");
+}
+
+#[test]
+fn set_global_text_keeps_the_rest() {
+    let mut config = parse();
+    config
+        .set_global_text("# defaults\nAddKeysToAgent no\nInclude config.d/*\n\n")
+        .unwrap();
+    assert_eq!(
+        config.to_string(),
+        SAMPLE.replace(
+            "AddKeysToAgent yes\n",
+            "# defaults\nAddKeysToAgent no\nInclude config.d/*\n"
+        )
+    );
+    assert!(config.set_global_text("Host x\n").is_err());
+
+    let mut config = SshConfig::parse("Host a\r\n");
+    config.set_global_text("User x\n").unwrap();
+    assert_eq!(config.to_string(), "User x\r\nHost a\r\n");
+}

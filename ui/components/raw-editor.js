@@ -25,7 +25,7 @@ class RawEditor extends HTMLElement {
     const saveButton = make("button", "primary", "Save");
     saveButton.type = "submit";
     actions.append(button("Cancel", "", cancel), saveButton);
-    head.append(make("h1", "", `Edit ${editing.kind} ${editing.name}`), actions);
+    head.append(make("h1", "", ["Edit", editing.kind, editing.name].filter(Boolean).join(" ")), actions);
     form.append(head);
 
     const text = make("textarea", "raw");
@@ -35,8 +35,11 @@ class RawEditor extends HTMLElement {
     text.rows = Math.min(30, Math.max(6, editing.text.split("\n").length + 1));
     text.addEventListener("input", () => (editing.text = text.value));
     form.append(text);
+    const what = editing.global
+      ? "The lines before the first Host or Match, as they are in the file. A Host or Match line is not allowed here."
+      : "The block's lines as they are in the file.";
     form.append(
-      make("p", "hint", "The block's lines as they are in the file. Blank lines and comments after the block are not shown, and stay as they are. ⌘↩ saves. OpenSSH checks the whole file before it is saved, and a backup of the old file is kept."),
+      make("p", "hint", `${what} Blank lines and comments after them are not shown, and stay as they are. ⌘↩ saves. OpenSSH checks the whole file before it is saved, and a backup of the old file is kept.`),
     );
     this.replaceChildren(form);
   }

@@ -128,7 +128,7 @@ class Store extends EventTarget {
   entries() {
     const config = this.config;
     const list = [];
-    list.push({ id: GLOBAL_ID, kind: "", name: "Global settings", settings: config.global, group: "" });
+    list.push({ id: GLOBAL_ID, kind: "", name: "Global settings", settings: config.global, raw: config.global_raw, revision: config.revision, group: "" });
     config.blocks.forEach((block, index) => {
       list.push({
         id: String(index),
@@ -367,7 +367,9 @@ class Store extends EventTarget {
     this.clearNotice();
     const editing = this.editing;
     try {
-      const result = editing.raw
+      const result = editing.global
+        ? await invoke("save_global_raw", { revision: editing.revision, text: editing.text })
+        : editing.raw
         ? await invoke("save_block_raw", { revision: editing.revision, file: editing.file, index: editing.index, text: editing.text })
         : await invoke("save_block", {
             revision: this.config.revision,
@@ -496,7 +498,7 @@ class Store extends EventTarget {
   startRaw(entry) {
     this.clearNotice();
     this.confirmingDelete = false;
-    this.editing = { raw: true, index: entry.index, file: entry.file, revision: entry.revision, kind: entry.kind, name: entry.name, text: entry.raw };
+    this.editing = { raw: true, global: entry.id === GLOBAL_ID, index: entry.index, file: entry.file, revision: entry.revision, kind: entry.kind, name: entry.name, text: entry.raw };
     this.emit();
   }
 

@@ -89,7 +89,11 @@ class HostDetail extends HTMLElement {
       title.append(make("span", "kind-label", entry.kind), name);
     }
     head.append(title);
-    if (entry.id !== GLOBAL_ID && !entry.readOnly) {
+    if (entry.id === GLOBAL_ID) {
+      const actions = make("div", "actions");
+      actions.append(button("Edit Raw", "", () => store.startRaw(entry)));
+      head.append(actions);
+    } else if (!entry.readOnly) {
       const actions = make("div", "actions");
       if (store.confirmingDelete) {
         actions.append(

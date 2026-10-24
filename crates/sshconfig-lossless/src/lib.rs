@@ -679,6 +679,45 @@ impl SshConfig {
         Ok(())
     }
 
+    /// The lines before the first block, as written, up to the last
+    /// directive. The blank lines and comments after that usually describe
+    /// the first block, so they are not part of it.
+    pub fn global_text(&self) -> String {
+        self.global[..global_len(&self.global)]
+            .iter()
+            .map(Line::to_string)
+            .collect()
+    }
+
+    /// Replace the lines of [`SshConfig::global_text`] with `text`, which
+    /// must have no `Host` or `Match` line. Its line endings change to the
+    /// file's; every other line stays as it is.
+    pub fn set_global_text(&mut self, text: &str) -> Result<(), String> {
+        let parsed = SshConfig::parse(text);
+        if !parsed.blocks.is_empty() {
+            return Err("Global settings cannot have a Host or Match line.".into());
+        }
+        let mut new = parsed.global;
+        while new.last().is_some_and(Line::is_blank) {
+            new.pop();
+        }
+        let eol = self.eol_style();
+        let after = self.global.split_off(global_len(&self.global));
+        // Only the last line of a file may have no newline. Keep it that way.
+        let ends_file = after.is_empty()
+            && self.blocks.is_empty()
+            && self.global.last().is_some_and(|l| l.eol.is_empty());
+        for line in &mut new {
+            line.eol.clone_from(&eol);
+        }
+        if ends_file && let Some(last) = new.last_mut() {
+            last.eol.clear();
+        }
+        new.extend(after);
+        self.global = new;
+        Ok(())
+    }
+
     /// The line ending this file uses: `\r\n` or `\n`.
     fn eol_style(&self) -> String {
         self.global
@@ -731,4 +770,13 @@ impl fmt::Display for SshConfig {
             .iter()
             .try_for_each(|block| write!(f, "{block}"))
     }
+}
+
+/// How many of the lines before the first block are global settings: up
+/// to the last directive, as [`Block::own_len`].
+fn global_len(lines: &[Line]) -> usize {
+    lines
+        .iter()
+        .rposition(|line| line.directive().is_some())
+        .map_or(0, |i| i + 1)
 }

@@ -99,6 +99,8 @@ struct ConfigView {
     /// Send this back with each change. See [`store::revision`].
     revision: String,
     global: Vec<Setting>,
+    /// The global lines as written, for the raw editor.
+    global_raw: String,
     blocks: Vec<BlockView>,
     /// True if writing the parsed file gives exactly the same bytes.
     lossless: bool,
@@ -135,6 +137,7 @@ fn view(path: &Path, loaded: &store::Loaded) -> ConfigView {
         exists: loaded.exists,
         revision: store::revision(&loaded.text),
         global: config.global_directives().map(Setting::from).collect(),
+        global_raw: config.global_text(),
         blocks: (0..config.blocks().len())
             .map(|i| BlockView::new(&config, i))
             .collect(),
@@ -313,6 +316,19 @@ async fn save_global(
     let settings = clean_settings(settings)?;
     edit(&app, &revision, |config| {
         config.edit_global(|global| apply_settings(global, &settings));
+        Ok(None)
+    })
+}
+
+/// Replace the global lines with `text` from the raw editor.
+#[tauri::command]
+async fn save_global_raw(
+    app: tauri::AppHandle,
+    revision: String,
+    text: String,
+) -> Result<SaveResult, String> {
+    edit(&app, &revision, |config| {
+        config.set_global_text(&text)?;
         Ok(None)
     })
 }
@@ -609,6 +625,7 @@ pub fn run() {
             clear_backups,
             move_global_line,
             save_global,
+            save_global_raw,
             list_keys
         ])
         .setup(|app| {
