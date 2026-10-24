@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Permissions for the main window. Keep this list short: the app edits ~/.ssh.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "permissions": ["core:default", "dialog:allow-open", "opener:allow-open-url", "opener:allow-default-urls"]
 }

@@ -9,8 +9,9 @@ mod store;
 use serde::{Deserialize, Serialize};
 use sshconfig_lossless::{Block, Directive, SshConfig};
 use std::path::{Path, PathBuf};
+use tauri::Emitter;
 use tauri::Manager;
-use tauri::menu::{AboutMetadata, Menu, PredefinedMenuItem};
+use tauri::menu::{Menu, MenuItem};
 
 /// Set this variable to open another file instead of `~/.ssh/config`.
 /// Useful for tests and screenshots.
@@ -392,36 +393,21 @@ fn clean_settings(settings: Vec<Setting>) -> Result<Vec<Setting>, String> {
     Ok(clean)
 }
 
-/// Tauri's default menu, with a fuller About panel. On macOS the panel
-/// shows name, version, copyright, credits and icon only (see
-/// `tauri::menu::AboutMetadata`), so the website and license go in the
-/// credits text.
+/// The menu event that opens the About dialog in the UI.
+const ABOUT_ID: &str = "about";
+
+/// Tauri's default menu, with its About item replaced by one that opens our
+/// own About dialog. The native panel shows credits as plain text (muda
+/// passes a plain NSAttributedString), so it cannot center them or link.
 fn menu_with_about(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let menu = Menu::default(app)?;
-    let version = app.package_info().version.to_string();
-    let about = AboutMetadata {
-        name: Some("SSH Config Manager".into()),
-        version: Some(version.clone()),
-        short_version: Some(version),
-        copyright: Some("© 2026 ReactIoT".into()),
-        credits: Some(
-            "Manage ~/.ssh/config without losing comments or formatting. \
-             Every save is checked with ssh -G, and a backup is kept.\n\n\
-             https://reactiot.com.au\n\
-             https://github.com/react-iot/ssh-cfg-mgr\n\
-             Licensed under Apache-2.0."
-                .into(),
-        ),
-        authors: Some(vec!["ReactIoT".into()]),
-        comments: Some("Manage ~/.ssh/config and SSH keys.".into()),
-        license: Some("Apache-2.0".into()),
-        website: Some("https://reactiot.com.au".into()),
-        website_label: Some("reactiot.com.au".into()),
-        // The bundle icon is missing under `tauri dev`; set it here so the
-        // panel always shows the app icon.
-        icon: app.default_window_icon().cloned(),
-    };
-    let about = PredefinedMenuItem::about(app, None, Some(about))?;
+    let about = MenuItem::with_id(
+        app,
+        ABOUT_ID,
+        "About SSH Config Manager",
+        true,
+        None::<&str>,
+    )?;
 
     // Where Menu::default puts About: first item of the app menu on macOS,
     // first item of Help (the last menu) elsewhere.
@@ -442,6 +428,8 @@ pub fn run() {
     tauri::Builder::default()
         // The file picker for IdentityFile and other path keywords.
         .plugin(tauri_plugin_dialog::init())
+        // Opens the About dialog's links in the browser.
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             load_config,
             save_block,
@@ -452,6 +440,11 @@ pub fn run() {
         .setup(|app| {
             app.set_menu(menu_with_about(app.handle())?)?;
             Ok(())
+        })
+        .on_menu_event(|app, event| {
+            if event.id() == ABOUT_ID {
+                let _ = app.emit("show-about", ());
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running SSH Cfg Mgr");
