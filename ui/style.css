@@ -264,7 +264,6 @@ button.with-icon { display: flex; align-items: center; gap: 6px; height: 30px; }
 .path-line { display: block; padding: 6px 10px; border-radius: 6px; background: var(--row-alt); font: 12px var(--mono); overflow-wrap: anywhere; }
 .theme-toggle { margin-bottom: 8px; }
 .theme-toggle button { min-width: 72px; height: 30px; }
-.theme-toggle button:last-child { border-radius: 0 6px 6px 0; }
 .option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); cursor: pointer; }
 .option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .option input { margin-top: 3px; accent-color: var(--accent); }
@@ -329,14 +328,15 @@ select.value-editor { padding-right: 30px; }
 .toggle button + button { margin-left: -1px; }
 .toggle button:first-child { border-radius: 6px 0 0 6px; }
 .toggle button[aria-checked="true"] { position: relative; background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
-.toggle button:last-child { border-radius: 0; }
+.toggle button:last-child { border-radius: 0 6px 6px 0; }
+/* In the editor the tick follows the toggle, so its end is square. */
+.value-line .toggle button:last-child { border-radius: 0; }
 
 /* Choices shown in place of the value while the row is hovered. */
 .hover-options { display: none; }
 tr:hover .has-options .value-button { display: none; }
 tr:hover .has-options .hover-options { display: flex; }
 .hover-options button { height: 30px; font-size: 13px; }
-.hover-options button:last-child { border-radius: 0 6px 6px 0; }
 
 /* History: backups on the left, what a restore would change on the right. */
 .history { display: grid; grid-template-columns: 270px 1fr; gap: 16px; align-items: start; }
