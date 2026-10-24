@@ -23,6 +23,14 @@ const MAX_DEPTH: usize = 16;
 pub struct IncludedFile {
     /// The file, with the home folder written as `~`.
     pub path: String,
+    /// The full path, which the UI sends back to edit the file.
+    pub file: String,
+    /// True if the file is in ~/.ssh (after following symlinks), so the
+    /// app may change it. Others, like ~/.orbstack/ssh/config, are
+    /// managed by other apps.
+    pub editable: bool,
+    /// See `store::revision`; empty if the file could not be read.
+    pub revision: String,
     /// The Include line's value, for example `config.d/*`.
     pub pattern: String,
     /// The file that has the Include line.
@@ -88,42 +96,49 @@ fn walk(
 
     for (args, pattern, condition, line) in lines {
         for arg in args {
-            let entry = |file: String, config, error| IncludedFile {
-                path: file,
+            let entry = |shown: String, error| IncludedFile {
+                path: shown,
+                file: String::new(),
+                editable: false,
+                revision: String::new(),
                 pattern: pattern.clone(),
                 from: tilde(path, home),
                 condition: condition.clone(),
                 line,
-                config,
+                config: None,
                 error,
             };
             let files = match expand(&arg, home) {
                 Ok(files) => files,
                 Err(error) => {
-                    found.push(entry(arg.clone(), None, Some(error)));
+                    found.push(entry(arg.clone(), Some(error)));
                     continue;
                 }
             };
             for file in files {
                 let key = file.canonicalize().unwrap_or_else(|_| file.clone());
-                if !seen.insert(key) {
+                if !seen.insert(key.clone()) {
                     continue; // Already listed, or a loop.
                 }
+                let mut item = entry(tilde(&file, home), None);
+                item.file = file.display().to_string();
+                item.editable = in_ssh_folder(&key, home);
                 match fs::read_to_string(&file) {
                     Ok(text) => {
                         let included = SshConfig::parse(&text);
+                        item.revision = crate::store::revision(&text);
                         let index = found.len();
-                        found.push(entry(tilde(&file, home), None, None));
+                        found.push(item);
                         if depth < MAX_DEPTH {
                             walk(&file, &included, home, depth + 1, seen, found);
                         }
                         found[index].config = Some(included);
                     }
-                    Err(e) => found.push(entry(
-                        tilde(&file, home),
-                        None,
-                        Some(format!("Cannot read it: {e}")),
-                    )),
+                    Err(e) => {
+                        item.editable = false;
+                        item.error = Some(format!("Cannot read it: {e}"));
+                        found.push(item);
+                    }
                 }
             }
         }
@@ -199,6 +214,14 @@ fn env_vars(text: &str) -> Result<String, String> {
     Ok(out)
 }
 
+/// True if `real` (a canonical path) is inside ~/.ssh. ~/.ssh is
+/// canonicalized too, in case it is itself a link.
+fn in_ssh_folder(real: &Path, home: &Path) -> bool {
+    let ssh = home.join(".ssh");
+    let ssh = ssh.canonicalize().unwrap_or(ssh);
+    real.starts_with(&ssh)
+}
+
 /// `path` with the home folder written as `~`.
 fn tilde(path: &Path, home: &Path) -> String {
     match path.strip_prefix(home) {
@@ -263,7 +286,33 @@ mod tests {
             "two is included from one, not the config"
         );
         assert_eq!(found[2].line, None, "inside Host main");
+        assert!(found.iter().all(|f| f.editable), "all in ~/.ssh");
+        assert!(!found[0].revision.is_empty());
         assert_eq!(found[2].config.as_ref().unwrap().blocks()[0].pattern(), "w");
+    }
+
+    #[test]
+    fn files_outside_ssh_folder_are_read_only() {
+        let home = home("outside");
+        fs::create_dir_all(home.join(".orbstack/ssh")).unwrap();
+        fs::write(home.join(".orbstack/ssh/config"), "Host orb\n").unwrap();
+        fs::write(home.join(".ssh/mine"), "Host m\n").unwrap();
+        let config = SshConfig::parse("Include ~/.orbstack/ssh/config mine\n");
+        let found = resolve(&home.join(".ssh/config"), &config, &home);
+        assert_eq!(paths(&found), ["~/.orbstack/ssh/config", "~/.ssh/mine"]);
+        assert!(!found[0].editable);
+        assert!(found[1].editable);
+
+        // A link in ~/.ssh to a file outside it is read-only too.
+        std::os::unix::fs::symlink(
+            home.join(".orbstack/ssh/config"),
+            home.join(".ssh/orb-link"),
+        )
+        .unwrap();
+        let linked = SshConfig::parse("Include orb-link\n");
+        let found = resolve(&home.join(".ssh/config"), &linked, &home);
+        assert_eq!(paths(&found), ["~/.ssh/orb-link"]);
+        assert!(!found[0].editable, "the real file is outside ~/.ssh");
     }
 
     #[test]

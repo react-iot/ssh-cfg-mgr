@@ -193,24 +193,36 @@ fn backup(target: &Path, path: &Path) -> Result<PathBuf, String> {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
-    let mut dest = dir.join(format!("config-{seconds}.bak"));
+    // Named after the file, so files in one folder (config.d/a and
+    // config.d/b) keep separate histories. For ~/.ssh/config this is
+    // config-<seconds>.bak, as before.
+    let file = file_name(path);
+    let mut dest = dir.join(format!("{file}-{seconds}.bak"));
     let mut n = 1;
     while dest.exists() {
-        dest = dir.join(format!("config-{seconds}-{n}.bak"));
+        dest = dir.join(format!("{file}-{seconds}-{n}.bak"));
         n += 1;
     }
     fs::copy(target, &dest).map_err(|e| format!("Cannot make backup {}: {e}", dest.display()))?;
 
-    prune(&dir);
+    prune(&dir, &file);
     Ok(dest)
 }
 
-/// Delete the oldest backups. A failure here does not stop the save.
-fn prune(dir: &Path) {
-    let backups = backups_in(dir);
+/// Delete the oldest backups of one file. A failure here does not stop
+/// the save.
+fn prune(dir: &Path, file: &str) {
+    let backups = backups_in(dir, file);
     for old in backups.iter().skip(MAX_BACKUPS) {
         let _ = fs::remove_file(dir.join(&old.name));
     }
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || "config".to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    )
 }
 
 /// One backup file, for the history list.
@@ -222,17 +234,20 @@ pub struct Backup {
     pub size: u64,
 }
 
-/// The time in a backup name: `config-<seconds>.bak` or
-/// `config-<seconds>-<n>.bak`. The file's mtime is no use: on macOS
+/// The time in a backup name of `file`: `<file>-<seconds>.bak` or
+/// `<file>-<seconds>-<n>.bak`. The file's mtime is no use: on macOS
 /// `fs::copy` keeps the mtime of the config it copied.
-fn backup_time(name: &str) -> Option<(u64, u64)> {
-    let stem = name.strip_prefix("config-")?.strip_suffix(".bak")?;
+fn backup_time(file: &str, name: &str) -> Option<(u64, u64)> {
+    let stem = name
+        .strip_prefix(file)?
+        .strip_prefix('-')?
+        .strip_suffix(".bak")?;
     let (seconds, n) = stem.split_once('-').unwrap_or((stem, "0"));
     Some((seconds.parse().ok()?, n.parse().ok()?))
 }
 
-/// Backups in `dir`, newest first.
-fn backups_in(dir: &Path) -> Vec<Backup> {
+/// Backups of `file` in `dir`, newest first.
+fn backups_in(dir: &Path, file: &str) -> Vec<Backup> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -240,7 +255,7 @@ fn backups_in(dir: &Path) -> Vec<Backup> {
         .filter_map(Result::ok)
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
-            let (time, n) = backup_time(&name)?;
+            let (time, n) = backup_time(file, &name)?;
             let size = e.metadata().ok()?.len();
             Some((time, n, Backup { name, time, size }))
         })
@@ -255,7 +270,7 @@ fn backup_dir(path: &Path) -> PathBuf {
 
 /// The backups of the config at `path`, newest first.
 pub fn list_backups(path: &Path) -> Vec<Backup> {
-    backups_in(&backup_dir(path))
+    backups_in(&backup_dir(path), &file_name(path))
 }
 
 /// Delete every backup of the config at `path`. Only backup files are
@@ -263,7 +278,7 @@ pub fn list_backups(path: &Path) -> Vec<Backup> {
 pub fn clear_backups(path: &Path) -> Result<usize, String> {
     let dir = backup_dir(path);
     let mut deleted = 0;
-    for backup in backups_in(&dir) {
+    for backup in backups_in(&dir, &file_name(path)) {
         let file = dir.join(&backup.name);
         fs::remove_file(&file).map_err(|e| format!("Cannot delete {}: {e}", file.display()))?;
         deleted += 1;
@@ -274,7 +289,7 @@ pub fn clear_backups(path: &Path) -> Result<usize, String> {
 /// The text of one backup. `name` must be a backup file name, so this
 /// cannot read any other file.
 pub fn read_backup(path: &Path, name: &str) -> Result<String, String> {
-    if name.contains(['/', '\\']) || backup_time(name).is_none() {
+    if name.contains(['/', '\\']) || backup_time(&file_name(path), name).is_none() {
         return Err(format!("\"{name}\" is not a backup."));
     }
     let file = backup_dir(path).join(name);
@@ -433,6 +448,32 @@ mod tests {
         fs::write(&extra, "Host b\n    User y\n").unwrap();
         write(&path, &text).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), text);
+    }
+
+    #[test]
+    fn backups_are_kept_per_file() {
+        // config.d/work and config.d/work-eu share a folder, not a history.
+        let dir = temp_dir("perfile");
+        let work = dir.join("work");
+        let work_eu = dir.join("work-eu");
+        fs::write(&work, "Host a\n").unwrap();
+        fs::write(&work_eu, "Host b\n").unwrap();
+        write(&work, "Host a2\n").unwrap();
+        write(&work_eu, "Host b2\n").unwrap();
+        write(&work_eu, "Host b3\n").unwrap();
+
+        let names =
+            |p: &Path| -> Vec<String> { list_backups(p).into_iter().map(|b| b.name).collect() };
+        assert_eq!(names(&work).len(), 1);
+        assert!(names(&work)[0].starts_with("work-"));
+        assert_eq!(names(&work_eu).len(), 2);
+        assert!(names(&work_eu).iter().all(|n| n.starts_with("work-eu-")));
+        let first = &names(&work)[0];
+        assert_eq!(read_backup(&work, first).unwrap(), "Host a\n");
+        assert!(
+            read_backup(&work_eu, first).is_err(),
+            "a backup of another file"
+        );
     }
 
     #[test]

@@ -55,7 +55,10 @@ app uses `#~`, not plain `#`, because a normal comment can also start with
 ## Include files
 
 Hosts in files brought in by `Include` are listed in their own section,
-one per file, read-only. The app follows OpenSSH's rules: several paths
+one per file. Files inside `~/.ssh` can be edited like the main config
+(each save is checked with `ssh -G` and backed up next to that file).
+Files outside `~/.ssh`, such as `~/.orbstack/ssh/config`, are managed by
+other apps and stay read-only. The app follows OpenSSH's rules: several paths
 per line, wildcards in lexical order, `~`, `${VAR}`, and relative paths
 in `~/.ssh`. An `Include` inside a `Host` or `Match` block is shown with
 "only for ...". A path with a token such as `%h` depends on the host, so

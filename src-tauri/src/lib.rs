@@ -182,9 +182,12 @@ async fn load_config(app: tauri::AppHandle) -> Result<ConfigView, String> {
 /// or `None` to add a new host. `group` is stored as `group_mode` says;
 /// an empty group removes it.
 #[tauri::command]
+// Tauri sends each argument by name from JS; a struct would add nothing.
+#[allow(clippy::too_many_arguments)]
 async fn save_block(
     app: tauri::AppHandle,
     revision: String,
+    file: Option<String>,
     index: Option<usize>,
     pattern: String,
     settings: Vec<Setting>,
@@ -195,7 +198,7 @@ async fn save_block(
     let settings = clean_settings(settings)?;
     let group = clean_group(&group, group_mode)?;
 
-    edit(&app, &revision, |config| {
+    edit_file(&app, file.as_deref(), &revision, |config| {
         let index = match index {
             Some(index) if index < config.blocks().len() => index,
             Some(_) => return Err(CHANGED_ON_DISK.to_string()),
@@ -251,9 +254,10 @@ fn apply_block(
 async fn delete_block(
     app: tauri::AppHandle,
     revision: String,
+    file: Option<String>,
     index: usize,
 ) -> Result<SaveResult, String> {
-    edit(&app, &revision, |config| {
+    edit_file(&app, file.as_deref(), &revision, |config| {
         config
             .remove_block(index)
             .ok_or_else(|| CHANGED_ON_DISK.to_string())?;
@@ -267,10 +271,11 @@ async fn delete_block(
 async fn save_block_raw(
     app: tauri::AppHandle,
     revision: String,
+    file: Option<String>,
     index: usize,
     text: String,
 ) -> Result<SaveResult, String> {
-    edit(&app, &revision, |config| {
+    edit_file(&app, file.as_deref(), &revision, |config| {
         if index >= config.blocks().len() {
             return Err(CHANGED_ON_DISK.to_string());
         }
@@ -302,10 +307,11 @@ async fn move_global_line(
 async fn move_block(
     app: tauri::AppHandle,
     revision: String,
+    file: Option<String>,
     from: usize,
     to: usize,
 ) -> Result<SaveResult, String> {
-    edit(&app, &revision, |config| {
+    edit_file(&app, file.as_deref(), &revision, |config| {
         if !config.move_block(from, to) {
             return Err(CHANGED_ON_DISK.to_string());
         }
@@ -353,10 +359,11 @@ async fn restore_backup(
 async fn set_block_enabled(
     app: tauri::AppHandle,
     revision: String,
+    file: Option<String>,
     index: usize,
     enabled: bool,
 ) -> Result<SaveResult, String> {
-    edit(&app, &revision, |config| {
+    edit_file(&app, file.as_deref(), &revision, |config| {
         config
             .block_mut(index)
             .ok_or_else(|| CHANGED_ON_DISK.to_string())?
@@ -372,7 +379,23 @@ fn edit(
     revision: &str,
     change: impl FnOnce(&mut SshConfig) -> Result<Option<usize>, String>,
 ) -> Result<SaveResult, String> {
-    let path = config_path(app)?;
+    edit_file(app, None, revision, change)
+}
+
+/// As [`edit`], for the main config (`file` None) or one of its included
+/// files. An included file must be listed by the config's Include lines
+/// and be inside ~/.ssh; the UI cannot ask to write any other path.
+fn edit_file(
+    app: &tauri::AppHandle,
+    file: Option<&str>,
+    revision: &str,
+    change: impl FnOnce(&mut SshConfig) -> Result<Option<usize>, String>,
+) -> Result<SaveResult, String> {
+    let main = config_path(app)?;
+    let path = match file {
+        None => main.clone(),
+        Some(file) => editable_include(&main, file)?,
+    };
     let old = store::read(&path)?;
     if store::revision(&old.text) != revision {
         return Err(CHANGED_ON_DISK.to_string());
@@ -382,20 +405,37 @@ fn edit(
     let selected = change(&mut config)?;
     let text = config.to_string();
 
-    if text == old.text {
+    if text != old.text {
+        let backup = store::write(&path, &text)?;
+        // The view is always the main config's; it lists included files.
         return Ok(SaveResult {
-            config: view(&path, &old),
-            backup: None,
+            config: view(&main, &store::read(&main)?),
+            backup: backup.map(|p| p.display().to_string()),
             selected,
         });
     }
-    let backup = store::write(&path, &text)?;
-    let new = store::Loaded { text, exists: true };
     Ok(SaveResult {
-        config: view(&path, &new),
-        backup: backup.map(|p| p.display().to_string()),
+        config: view(&main, &store::read(&main)?),
+        backup: None,
         selected,
     })
+}
+
+/// `file` if it is an editable file included by the config at `main`.
+fn editable_include(main: &Path, file: &str) -> Result<PathBuf, String> {
+    let loaded = store::read(main)?;
+    let config = SshConfig::parse(&loaded.text);
+    let home = std::env::var("HOME").unwrap_or_default();
+    let found = include::resolve(main, &config, Path::new(&home));
+    match found.iter().find(|f| f.file == file) {
+        Some(f) if f.editable => Ok(PathBuf::from(&f.file)),
+        Some(_) => Err(format!(
+            "{file} is outside ~/.ssh, so this app does not change it."
+        )),
+        None => Err(format!(
+            "{file} is not included by the config any more. Reload."
+        )),
+    }
 }
 
 /// New hosts go before `Host *`. OpenSSH uses the first value it finds, so

@@ -241,7 +241,10 @@ function value(settings, keyword) {
 }
 
 // All entries in the sidebar: global settings first, then each block.
-// A block's id is its index in config.blocks, as a string.
+// A block's id is its index in config.blocks, as a string; a block of an
+// included file has id "inc:<file>:<block>". `index` is the block's index
+// in its own file, and `file`/`revision` say which file to save (null: the
+// main config).
 function entries() {
   const list = [];
   if (config.global.length > 0) {
@@ -250,6 +253,9 @@ function entries() {
   config.blocks.forEach((block, index) => {
     list.push({
       id: String(index),
+      index,
+      file: null,
+      revision: config.revision,
       kind: block.kind,
       name: block.pattern,
       settings: block.settings,
@@ -258,18 +264,25 @@ function entries() {
       ...groupOf(block),
     });
   });
-  // Hosts from included files: read-only, with the file they come from.
-  (config.included ?? []).forEach((file, fileIndex) => {
-    file.blocks.forEach((block, index) => {
+  // Hosts from included files, with the file they come from. Files in
+  // ~/.ssh can be edited; others are read-only.
+  (config.included ?? []).forEach((source, fileIndex) => {
+    source.blocks.forEach((block, index) => {
       list.push({
         id: `inc:${fileIndex}:${index}`,
+        index,
+        file: source.file,
+        revision: source.revision,
         kind: block.kind,
         name: block.pattern,
         settings: block.settings,
         enabled: block.enabled,
-        group: "",
-        readOnly: true,
-        file,
+        raw: block.raw,
+        // Kept so a save does not drop a group comment; shown by file.
+        ...groupOf(block),
+        included: true,
+        readOnly: !source.editable,
+        source,
         fileIndex,
       });
     });
@@ -326,7 +339,7 @@ function renderList() {
   });
 
   const global = shown.filter((e) => e.id === GLOBAL_ID);
-  const sections = grouped(shown.filter((e) => e.id !== GLOBAL_ID && !e.readOnly));
+  const sections = grouped(shown.filter((e) => e.id !== GLOBAL_ID && !e.included));
   const hasGroups = sections.some(([group]) => group);
   if (namingGroup) list.append(groupNameRow());
   for (const entry of global) list.append(listItem(entry));
@@ -386,7 +399,7 @@ function renderList() {
 
   const hosts = config.blocks.filter((b) => b.kind === "Host").length;
   const matches = config.blocks.length - hosts;
-  const included = all.filter((e) => e.readOnly).length;
+  const included = all.filter((e) => e.included).length;
   el("count").textContent = filter
     ? `${shown.length} of ${all.length} shown`
     : `${plural(hosts, "host")}, ${plural(matches, "match block")}${included ? `, ${included} included` : ""}`;
@@ -496,7 +509,8 @@ function listItem(entry) {
     item.append(visibilityButton(entry));
   }
   item.addEventListener("click", () => select(entry.id));
-  if (entry.id !== GLOBAL_ID && !entry.readOnly && !editing) {
+  // Moving hosts between or inside included files is not supported yet.
+  if (entry.id !== GLOBAL_ID && !entry.included && !editing) {
     // Drag a host onto a group (or a host in it) to move it there.
     item.draggable = true;
     item.addEventListener("dragstart", (event) => {
@@ -596,10 +610,10 @@ function reorderTarget(node, target) {
 async function reorder(id, target, after) {
   const dragged = entries().find((e) => e.id === id);
   if (!dragged || dragged.id === target.id) return;
-  const from = Number(dragged.id);
+  const from = dragged.index;
   // The index in the new order: the target moves up by one if the dragged
   // host was above it.
-  let to = Number(target.id) + (after ? 1 : 0);
+  let to = target.index + (after ? 1 : 0);
   if (from < to) to -= 1;
   const newGroup = dragged.group === target.group ? undefined : target.group;
   if (to === from) {
@@ -634,7 +648,7 @@ function visibilityButton(entry) {
   const label = entry.enabled ? `Turn off ${entry.name}` : `Turn on ${entry.name}`;
   const node = button("", "visibility", (event) => {
     event.stopPropagation();
-    setEnabled(Number(entry.id), !entry.enabled);
+    setEnabled(entry, !entry.enabled);
   });
   node.title = entry.enabled ? "On. Click to comment it out." : "Off (commented out). Click to turn on.";
   node.setAttribute("aria-label", label);
@@ -917,7 +931,7 @@ function renderView(detail) {
     if (confirmingDelete) {
       actions.append(
         make("span", "confirm-text", "Delete this block?"),
-        button("Delete", "danger", () => remove(Number(entry.id))),
+        button("Delete", "danger", () => remove(entry)),
         button("Cancel", "", () => {
           confirmingDelete = false;
           render();
@@ -946,8 +960,8 @@ function renderView(detail) {
   const lead =
     entry.id === GLOBAL_ID
       ? "These settings are before the first Host or Match line. They apply to all hosts. This version cannot edit them."
-      : entry.readOnly
-        ? `Read-only. From ${entry.file.path}, included by "Include ${entry.file.pattern}" in ${entry.file.from}${entry.file.condition ? `, only for ${entry.file.condition}` : ""}.`
+      : entry.included
+        ? `${entry.readOnly ? "Read-only: outside ~/.ssh. " : ""}From ${entry.source.path}, included by "Include ${entry.source.pattern}" in ${entry.source.from}${entry.source.condition ? `, only for ${entry.source.condition}` : ""}.`
         : entry.enabled
         ? ""
         : "Off: commented out with #~, so OpenSSH ignores it.";
@@ -1099,8 +1113,9 @@ async function saveSettings(entry, settings, pattern = entry.name, newGroup = un
   if (newGroup !== undefined) group = newGroup;
   try {
     const result = await invoke("save_block", {
-      revision: config.revision,
-      index: Number(entry.id),
+      revision: entry.revision,
+      index: entry.index,
+      file: entry.file,
       pattern,
       settings,
       group,
@@ -1112,7 +1127,7 @@ async function saveSettings(entry, settings, pattern = entry.name, newGroup = un
     inlineValue = null;
     // A new group that now has a host is in the file.
     setNewGroups(newGroups.filter((g) => !result.config.blocks.some((b) => groupOf(b).group === g)));
-    applyResult(result, "Saved.");
+    applyResult(result, "Saved.", entry.file);
   } catch (error) {
     showNotice(String(error), "error");
   }
@@ -1325,7 +1340,7 @@ function renderNew(detail) {
 function startRaw(entry) {
   clearNotice();
   confirmingDelete = false;
-  editing = { raw: true, index: Number(entry.id), kind: entry.kind, name: entry.name, text: entry.raw };
+  editing = { raw: true, index: entry.index, file: entry.file, revision: entry.revision, kind: entry.kind, name: entry.name, text: entry.raw };
   render();
   el("detail").querySelector("textarea").focus();
 }
@@ -1374,11 +1389,18 @@ function cancelEdit() {
 
 // ---- Save and delete ----
 
-function applyResult(result, message) {
+// `file`: the included file that was saved (null: the main config), so the
+// saved block of that file is selected.
+function applyResult(result, message, file = null) {
   config = result.config;
   editing = null;
   confirmingDelete = false;
-  selected = result.selected === null ? null : String(result.selected);
+  if (result.selected === null) selected = null;
+  else if (file === null) selected = String(result.selected);
+  else {
+    const fileIndex = config.included.findIndex((f) => f.file === file);
+    selected = fileIndex < 0 ? null : `inc:${fileIndex}:${result.selected}`;
+  }
   render();
   showNotice(result.backup ? `${message} Backup: ${result.backup}` : message);
   setSync("Monitoring changes", `Saved at ${now()}. Watching the file for changes.`);
@@ -1386,9 +1408,11 @@ function applyResult(result, message) {
 
 async function save() {
   clearNotice();
+  // Read before the call: applyResult clears `editing`.
+  const file = editing.file ?? null;
   try {
     const result = editing.raw
-      ? await invoke("save_block_raw", { revision: config.revision, index: editing.index, text: editing.text })
+      ? await invoke("save_block_raw", { revision: editing.revision, file: editing.file, index: editing.index, text: editing.text })
       : await invoke("save_block", {
           revision: config.revision,
           index: editing.index,
@@ -1397,18 +1421,18 @@ async function save() {
           group: editing.group,
           groupMode: editing.groupMode,
         });
-    applyResult(result, "Saved.");
+    applyResult(result, "Saved.", file);
   } catch (error) {
     // Keep the editor open, so the user can fix the problem.
     showNotice(String(error), "error");
   }
 }
 
-async function remove(index) {
+async function remove(entry) {
   clearNotice();
   try {
-    const result = await invoke("delete_block", { revision: config.revision, index });
-    applyResult(result, "Deleted.");
+    const result = await invoke("delete_block", { revision: entry.revision, file: entry.file, index: entry.index });
+    applyResult(result, "Deleted.", entry.file);
   } catch (error) {
     confirmingDelete = false;
     render();
@@ -1418,10 +1442,10 @@ async function remove(index) {
 
 // Unlike a save, this keeps the current selection: the user clicked a row's
 // button, not the row.
-async function setEnabled(index, enabled) {
+async function setEnabled(entry, enabled) {
   clearNotice();
   try {
-    const result = await invoke("set_block_enabled", { revision: config.revision, index, enabled });
+    const result = await invoke("set_block_enabled", { revision: entry.revision, file: entry.file, index: entry.index, enabled });
     config = result.config;
     render();
     const message = enabled ? "Turned on." : "Turned off (commented out).";
@@ -1494,6 +1518,9 @@ const WATCH_MS = 2000;
 let checking = false;
 let warnedRevision = null;
 
+// The main config and every included file: a change to any of them counts.
+const fingerprint = (c) => [c.revision, ...(c.included ?? []).map((f) => `${f.file}:${f.revision}`)].join("|");
+
 async function checkForChanges() {
   if (!config || checking || document.hidden) return;
   checking = true;
@@ -1502,15 +1529,15 @@ async function checkForChanges() {
     const fresh = await invoke("load_config");
     // A save finished while we read: its result is newer than ours.
     if (config !== before) return;
-    if (fresh.revision === config.revision) {
+    if (fingerprint(fresh) === fingerprint(config)) {
       setSync("Monitoring changes", `Last checked at ${now()}. No changes.`);
       return;
     }
     if (editing) {
       // Keep the form. A save now would fail, so say so once.
       setSync("Changed on disk", `Changed on disk at ${now()}. Not reloaded while you edit.`, "changed");
-      if (warnedRevision !== fresh.revision) {
-        warnedRevision = fresh.revision;
+      if (warnedRevision !== fingerprint(fresh)) {
+        warnedRevision = fingerprint(fresh);
         showNotice("The file changed on disk. Your changes cannot be saved. Copy what you need, click Cancel, and edit again.", "error");
       }
       return;
