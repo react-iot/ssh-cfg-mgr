@@ -16,12 +16,12 @@ class KeysView extends HTMLElement {
 
     const table = make("table", "keys");
     const head = make("tr");
-    for (const title of ["Key", "Type", "Fingerprint", "Used by"]) head.append(make("th", "", title));
+    for (const title of ["Key", "Fingerprint", "Used by"]) head.append(make("th", "", title));
     table.append(head);
     for (const key of keys) {
       const name = make("td");
-      name.append(make("div", "", key.name), make("div", "sub", key.comment || key.path));
-      const type = make("td", "", key.kind ? `${key.kind} ${key.bits}` : "Cannot read");
+      const type = key.kind ? `${key.kind} ${key.bits}` : "Cannot read";
+      name.append(make("div", "", key.name), make("div", "sub", [type, key.comment].filter(Boolean).join(" · ")));
       const fingerprint = make("td", "fingerprint", key.fingerprint);
       const users = make("td");
       const list = make("div", "users");
@@ -36,7 +36,7 @@ class KeysView extends HTMLElement {
       if (!key.has_private) list.append(Object.assign(make("span", "badge warn", "No private key"), { title: "Only the .pub file is in ~/.ssh." }));
       users.append(list);
       const row = make("tr");
-      row.append(name, type, fingerprint, users);
+      row.append(name, fingerprint, users);
       table.append(row);
     }
     this.append(table);

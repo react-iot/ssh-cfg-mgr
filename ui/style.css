@@ -419,7 +419,6 @@ button.trash:hover { color: var(--danger); border-color: var(--danger); }
 
 /* Keys view */
 .keys td:first-child { width: auto; }
-.keys td:nth-child(2) { font-family: inherit; white-space: nowrap; }
 .keys .fingerprint { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
 .keys .users { display: flex; flex-wrap: wrap; gap: 4px; }
 .keys .users button { padding: 1px 8px; font-size: 12px; }
