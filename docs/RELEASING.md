@@ -90,7 +90,7 @@ off only its own step (signing or notarization), with a warning.
 
 ### 4. Check
 
-Run the workflow by hand, download `bundles-macos-latest`, then:
+Run the workflow by hand, download `bundles-macos-latest`, open the `.dmg`, then:
 
 ```sh
 codesign -dv --verbose=2 "SSH Config Manager.app"

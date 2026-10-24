@@ -135,8 +135,11 @@ jobs:
         with:
           name: bundles-${{ matrix.platform }}
           # The workspace target folder: target/<triple>/release/bundle with
-          # --target, target/release/bundle without.
+          # --target, target/release/bundle without. Only the final files,
+          # not the work folders (.AppDir and so on) beside them.
           path: |
-            target/*/release/bundle/
-            target/release/bundle/
+            target/*/release/bundle/dmg/*.dmg
+            target/release/bundle/appimage/*.AppImage
+            target/release/bundle/deb/*.deb
+            target/release/bundle/rpm/*.rpm
           if-no-files-found: error
