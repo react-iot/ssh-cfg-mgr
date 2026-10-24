@@ -128,8 +128,6 @@ button:hover { border-color: var(--accent); }
 button.primary { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); font-weight: 550; }
 button.primary:hover { filter: brightness(1.08); }
 button.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 550; }
-button.icon { padding: 4px 10px; font-size: 16px; line-height: 1; color: var(--muted); }
-button.icon:hover { color: var(--danger); border-color: var(--danger); }
 /* Buttons and selects joined into one control: shared borders, outer corners round. */
 .segmented { display: flex; }
 .segmented > * { height: 32px; margin: 0; border-radius: 0; background: var(--bg); }
@@ -285,7 +283,6 @@ button.with-icon { display: flex; align-items: center; gap: 6px; height: 30px; }
 .field { display: flex; flex-direction: column; gap: 4px; width: 100%; font-weight: 550; }
 .field input { font-family: var(--mono); font-weight: 400; }
 .hint { margin: 0; color: var(--muted); font-size: 12px; }
-.settings { display: grid; grid-template-columns: 220px 1fr auto; gap: 6px 8px; width: 100%; margin-top: 10px; }
 .col-head { font-size: 12px; font-weight: 600; color: var(--muted); }
 .form-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 

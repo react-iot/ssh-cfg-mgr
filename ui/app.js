@@ -807,7 +807,7 @@ function renderView(detail) {
       actions.append(button("Edit Raw", "", () => startRaw(entry)));
       // Only a Host can be copied: a new block is always a Host.
       if (entry.kind === "Host") {
-        actions.append(button("Duplicate", "", () => startEdit({ ...entry, id: null, name: `${entry.name}-copy`, enabled: true })));
+        actions.append(button("Duplicate", "", () => startNew(entry)));
       }
       const trash = iconButton(TRASH, "Delete this block", () => {
         confirmingDelete = true;
@@ -1131,43 +1131,71 @@ function iconButton(path, label, onClick) {
   return node;
 }
 
-// ---- Detail: edit form ----
+// ---- Detail: new host ----
 
-function startEdit(entry) {
+// A new host, or a copy of `from`. Only its name is asked for, with the
+// same editor as renaming; the tick saves it, and its settings are then
+// edited in the table like any other host.
+function startNew(from = null) {
   clearNotice();
   confirmingDelete = false;
   // A block keeps the way its group is stored. One with no group uses the
   // setting for new groups.
-  const groupMode = entry?.groupMode ?? prefs.newGroupMode;
-  editing = entry
-    ? {
-        // id null: a copy of a block, saved as a new host.
-        index: entry.id === null ? null : Number(entry.id),
-        duplicate: entry.id === null,
-        kind: entry.kind,
-        pattern: entry.name,
-        // In Tag mode the Group field is the Tag, so it is not a setting row.
-        settings: entry.settings
-          .filter((s) => groupMode !== "tag" || s.keyword.toLowerCase() !== "tag")
-          .map((s) => ({ ...s })),
-        group: entry.group,
-        groupMode,
-      }
-    : {
-        index: null,
-        kind: "Host",
-        pattern: "",
-        settings: [
-          { keyword: "HostName", value: "" },
-          { keyword: "User", value: "" },
-        ],
-        group: "",
-        groupMode,
-      };
-  if (editing.index === null) selected = NEW_ID;
+  const groupMode = from?.groupMode ?? prefs.newGroupMode;
+  editing = {
+    draft: true,
+    index: null,
+    from,
+    pattern: from ? `${from.name}-copy` : "",
+    // In Tag mode the group is the Tag, so it is sent as the group.
+    settings: (from?.settings ?? [])
+      .filter((s) => groupMode !== "tag" || s.keyword.toLowerCase() !== "tag")
+      .map((s) => ({ ...s })),
+    group: from?.group ?? "",
+    groupMode,
+  };
+  selected = NEW_ID;
   render();
-  const first = document.querySelector("#detail input");
-  if (first) first.focus();
+}
+
+function renderNew(detail) {
+  const head = make("div", "detail-head");
+  const title = make("h1");
+  const editor = valueEditor(
+    "Host",
+    editing.pattern,
+    (pattern) => {
+      editing.pattern = pattern;
+      save();
+    },
+    cancelEdit,
+  );
+  editor.input.classList.add("pattern-editor");
+  editor.input.placeholder = "my-server  or  gw-* !gw-test";
+  // Keep what is typed if the view is drawn again (e.g. a sort click).
+  editor.input.addEventListener("input", () => (editing.pattern = editor.input.value));
+  title.append(make("span", "kind-label", "Host"), editor);
+  head.append(title);
+  detail.append(head);
+  detail.append(
+    make("p", "lead", "The name you type after ssh. Use * as a wildcard and ! to exclude; separate patterns with spaces. The tick saves the host; then add its settings in the table."),
+  );
+
+  // A copy shows what it will copy.
+  if (editing.from?.settings.length) {
+    detail.append(make("p", "hint", `Copied from ${editing.from.name}${editing.group ? `, in group ${editing.group}` : ""}:`));
+    const table = make("table");
+    const headRow = make("tr");
+    headRow.append(make("th", "", "Keyword"), make("th", "", "Value"));
+    table.append(headRow);
+    for (const setting of editing.from.settings) {
+      const row = make("tr");
+      row.append(make("td", "", setting.keyword), make("td", "", setting.value));
+      table.append(row);
+    }
+    detail.append(table);
+  }
+  queueMicrotask(() => editor.input.focus());
 }
 
 // Edit the block's lines as plain text.
@@ -1221,99 +1249,6 @@ function cancelEdit() {
   render();
 }
 
-function renderEdit(detail) {
-  const form = make("form", "edit-form");
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    save();
-  });
-  form.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") cancelEdit();
-  });
-
-  const title = editing.duplicate ? "Duplicate host" : editing.index === null ? "New host" : `Edit ${editing.kind}`;
-  form.append(make("h1", "", title));
-
-  const patternLabel = make("label", "field");
-  patternLabel.append(
-    make("span", "", editing.kind === "Match" ? "Match criteria" : "Host pattern"),
-  );
-  const pattern = make("input");
-  pattern.value = editing.pattern;
-  pattern.placeholder = editing.kind === "Match" ? "host *.internal" : "my-server  or  gw-* !gw-test";
-  pattern.spellcheck = false;
-  pattern.required = true;
-  pattern.addEventListener("input", () => (editing.pattern = pattern.value));
-  patternLabel.append(pattern);
-  form.append(patternLabel);
-  if (editing.kind === "Host") {
-    form.append(
-      make("p", "hint", "The name you type after ssh. Use * as a wildcard and ! to exclude. Separate patterns with spaces."),
-    );
-  }
-
-  const groupLabel = make("label", "field");
-  groupLabel.append(make("span", "", "Group"));
-  const group = make("input");
-  group.value = editing.group;
-  group.placeholder = "Optional";
-  group.setAttribute("list", "groups");
-  group.spellcheck = false;
-  group.addEventListener("input", () => (editing.group = group.value));
-  groupLabel.append(group);
-  const groupHint = make(
-    "p",
-    "hint",
-    editing.groupMode === "tag"
-      ? "Saved as a Tag line in this block. One word. Needs OpenSSH 9.4 or later."
-      : "Saved as a \"# group:\" comment above this block. OpenSSH ignores it.",
-  );
-  form.append(groupLabel, groupHint);
-
-  const rows = make("div", "settings");
-  rows.append(make("span", "col-head", "Keyword"), make("span", "col-head", "Value"), make("span"));
-  editing.settings.forEach((setting, i) => {
-    const keyword = make("input");
-    keyword.value = setting.keyword;
-    keyword.setAttribute("list", "keywords");
-    keyword.setAttribute("aria-label", "Keyword");
-    keyword.spellcheck = false;
-    keyword.addEventListener("input", () => (setting.keyword = keyword.value));
-
-    const val = make("input", "mono");
-    val.value = setting.value;
-    val.setAttribute("aria-label", `Value for ${setting.keyword || "new keyword"}`);
-    val.spellcheck = false;
-    val.addEventListener("input", () => (setting.value = val.value));
-
-    const removeRow = button("×", "icon", () => {
-      editing.settings.splice(i, 1);
-      render();
-    });
-    removeRow.setAttribute("aria-label", "Remove this setting");
-    rows.append(keyword, val, removeRow);
-  });
-  form.append(rows);
-
-  form.append(
-    button("Add setting", "", () => {
-      editing.settings.push({ keyword: "", value: "" });
-      render();
-      const inputs = document.querySelectorAll(".settings input[list]");
-      inputs[inputs.length - 1].focus();
-    }),
-  );
-
-  const actions = make("div", "form-actions");
-  const saveButton = make("button", "primary", "Save");
-  saveButton.type = "submit";
-  actions.append(saveButton, button("Cancel", "", cancelEdit));
-  actions.append(make("span", "hint", "OpenSSH checks the file before it is saved. A backup of the old file is kept."));
-  form.append(actions);
-
-  detail.append(form);
-}
-
 // ---- Save and delete ----
 
 function applyResult(result, message) {
@@ -1341,7 +1276,7 @@ async function save() {
         });
     applyResult(result, "Saved.");
   } catch (error) {
-    // Keep the form open, so the user can fix the problem.
+    // Keep the editor open, so the user can fix the problem.
     showNotice(String(error), "error");
   }
 }
@@ -1382,7 +1317,7 @@ function render() {
   const detail = el("detail");
   detail.replaceChildren();
   if (editing?.raw) renderRaw(detail);
-  else if (editing) renderEdit(detail);
+  else if (editing?.draft) renderNew(detail);
   else renderView(detail);
 }
 
@@ -1593,7 +1528,7 @@ el("reload").addEventListener("click", () => {
   load();
 });
 el("new-host").addEventListener("click", () => {
-  if (!editing) startEdit(null);
+  if (!editing) startNew();
 });
 
 // The sidebar + button opens a menu: New host or New group.
@@ -1616,7 +1551,7 @@ el("add-menu").addEventListener("click", (event) => {
     namingGroup = true;
     renderList();
   } else {
-    startEdit(null);
+    startNew();
   }
 });
 el("add-menu").addEventListener("keydown", (event) => {
