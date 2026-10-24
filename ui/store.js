@@ -85,6 +85,8 @@ class Store extends EventTarget {
   history = emptyHistory();
   // The keys in ~/.ssh (null while loading).
   keys = null;
+  // The New key form's fields, or null when it is closed.
+  keyForm = null;
   // "Clear history" was clicked once, waiting for the second click.
   confirmingClear = false;
   #checking = false;
@@ -211,6 +213,7 @@ class Store extends EventTarget {
 
   openKeys() {
     this.keys = null;
+    this.keyForm = null;
     this.select(KEYS_ID);
     this.loadKeys();
   }
@@ -223,6 +226,33 @@ class Store extends EventTarget {
       this.keys = [];
     }
     this.emit();
+  }
+
+  openKeyForm() {
+    const taken = new Set((this.keys ?? []).map((k) => k.path.split("/").pop()));
+    let name = "id_ed25519";
+    for (let n = 2; taken.has(name); n++) name = `id_ed25519_${n}`;
+    this.keyForm = { name, comment: "", passphrase: "", confirm: "" };
+    this.emit();
+  }
+
+  closeKeyForm() {
+    this.keyForm = null;
+    this.emit();
+  }
+
+  async generateKey() {
+    const form = this.keyForm;
+    if (form.passphrase !== form.confirm) return this.notice("The two passphrases are not the same.", "error");
+    this.clearNotice();
+    try {
+      const key = await invoke("generate_key", { name: form.name, comment: form.comment, passphrase: form.passphrase });
+      this.keyForm = null;
+      this.notice(`Made ${key.path} and its .pub file. Copy the public key to a server or to GitHub.`);
+      await this.loadKeys();
+    } catch (error) {
+      this.notice(String(error), "error");
+    }
   }
 
   // Each key with the entries whose IdentityFile names it.

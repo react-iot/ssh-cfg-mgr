@@ -422,3 +422,6 @@ button.trash:hover { color: var(--danger); border-color: var(--danger); }
 .keys .fingerprint { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
 .keys .users { display: flex; flex-wrap: wrap; gap: 4px; }
 .keys .users button { padding: 1px 8px; font-size: 12px; }
+.keys .key-tools { width: 1%; white-space: nowrap; text-align: right; }
+.keys .key-tools button { padding: 2px 10px; font-size: 12px; }
+.key-form .field { max-width: 420px; }
