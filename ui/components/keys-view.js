@@ -1,8 +1,8 @@
-// <keys-view>: the keys in ~/.ssh, the hosts whose IdentityFile names
-// them, and a form to make a new key. State is store.keys and
-// store.keyForm (null when the form is closed).
+// <keys-view>: the keys in ~/.ssh and the hosts whose IdentityFile names
+// them. New key opens <key-dialog>. State is store.keys.
 import { make, button, plural } from "../dom.js";
 import { store } from "../store.js";
+import { openKeyDialog } from "./key-dialog.js";
 
 // Copy text. navigator.clipboard can be missing or refused in a webview;
 // then a selected textarea and the copy command do it.
@@ -24,11 +24,10 @@ class KeysView extends HTMLElement {
   render() {
     const head = make("div", "detail-head");
     const actions = make("div", "actions");
-    if (!store.keyForm) actions.append(button("New key", "primary", () => store.openKeyForm()));
+    actions.append(button("New key", "primary", () => openKeyDialog(store.freeKeyName())));
     head.append(make("h1", "", "SSH keys"), actions);
     this.replaceChildren(head);
     this.append(make("p", "lead", "Keys in ~/.ssh, and the hosts whose IdentityFile names them. Choose a host to open it."));
-    if (store.keyForm) this.append(this.#form());
     if (store.keys === null) return this.append(make("p", "empty", "Loading…"));
     const keys = store.keysWithUsers();
     if (!keys.length) return this.append(make("p", "empty", "No keys found in ~/.ssh."));
@@ -72,45 +71,6 @@ class KeysView extends HTMLElement {
       table.append(row);
     }
     this.append(table);
-  }
-
-  // Name, comment and passphrase of a new Ed25519 key.
-  #form() {
-    const draft = store.keyForm;
-    const form = make("form", "settings-section key-form");
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      store.generateKey();
-    });
-    form.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") store.closeKeyForm();
-    });
-    form.append(make("h2", "", "New Ed25519 key"));
-    const field = (label, key, attrs, hint) => {
-      const wrap = make("label", "field", label);
-      const input = Object.assign(make("input"), { value: draft[key], spellcheck: false, autocomplete: "off" }, attrs);
-      input.addEventListener("input", () => (draft[key] = input.value));
-      wrap.append(input);
-      if (hint) wrap.append(make("span", "hint", hint));
-      return wrap;
-    };
-    form.append(
-      field("File name", "name", { required: true, pattern: "[A-Za-z0-9_\\-][A-Za-z0-9._\\-]*" }, "In ~/.ssh. The public key goes in the same name with .pub."),
-      field("Comment", "comment", { placeholder: "you@computer" }, "Shown next to the key, for example in GitHub. Optional."),
-      field("Passphrase", "passphrase", { type: "password", autocomplete: "new-password" }, "Protects the key file. Empty means no passphrase."),
-      field("Passphrase again", "confirm", { type: "password", autocomplete: "new-password" }),
-    );
-    const actions = make("div", "form-actions");
-    const submit = make("button", "primary", "Make key");
-    submit.type = "submit";
-    actions.append(button("Cancel", "", () => store.closeKeyForm()), submit);
-    form.append(actions);
-    // Focus the name once, when the form opens, not on each redraw.
-    if (!draft.focused) {
-      draft.focused = true;
-      queueMicrotask(() => form.querySelector("input")?.focus());
-    }
-    return form;
   }
 }
 

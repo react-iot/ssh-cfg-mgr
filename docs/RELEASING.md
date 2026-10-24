@@ -7,6 +7,7 @@
 | `macos-latest` | `.app` and `.dmg`, universal (Apple silicon and Intel) |
 | `ubuntu-22.04` | `.AppImage`, `.deb`, `.rpm` for x86_64 |
 | `ubuntu-22.04-arm` | `.AppImage`, `.deb`, `.rpm` for ARM64 |
+| `windows-latest` | `.msi` and NSIS `-setup.exe` for x64, signed with Azure Artifact Signing |
 
 ## Make a release
 
@@ -32,7 +33,8 @@ gh workflow run release.yml --ref <branch>
 ```
 
 The files are kept as workflow artifacts (`bundles-macos-latest`,
-`bundles-ubuntu-22.04`, `bundles-ubuntu-22.04-arm`). No release is made.
+`bundles-ubuntu-22.04`, `bundles-ubuntu-22.04-arm`, `bundles-windows-latest`).
+No release is made.
 
 ## macOS signing and notarization
 
@@ -101,3 +103,54 @@ spctl -a -vv "SSH Config Manager.app"   # "source=Notarized Developer ID"
 
 Tauri notarizes the `.app`. The workflow then notarizes and staples the
 `.dmg` as well, before the release job uploads it.
+
+## Windows signing (Azure Artifact Signing)
+
+Without these values the Windows build works but is **not signed**, and
+the workflow log shows a warning. Windows SmartScreen can warn about a new
+release even when it is signed, until the file has enough downloads.
+
+Artifact Signing (the new name of Trusted Signing) gives public-trust
+certificates to organizations in Australia; individual developers must be
+in the US or Canada. Source: the Microsoft Learn quickstart, Prerequisites.
+
+### 1. Azure
+
+1. A **paid** Azure subscription (free and trial subscriptions cannot use
+   it).
+2. Subscription > Resource providers: register **Microsoft.CodeSigning**.
+3. Create an **Artifact Signing account** (Basic SKU is enough) in a
+   region from the quickstart's list. Note its **endpoint**, for example
+   `https://eus.codesigning.azure.net`.
+4. Give your user the **Artifact Signing Identity Verifier** role, then
+   Identity validations > Organization > New identity > **Public**:
+   ReactIoT's legal name, business number, website, and an email address
+   at that website's domain. It takes 1 to 20 business days.
+5. When it is **Completed**: Certificate profiles > Create > **Public
+   Trust**, with that identity validation.
+
+### 2. App registration for CI
+
+1. Microsoft Entra ID > App registrations > New registration. Then
+   Certificates & secrets > New client secret. Copy the secret value.
+2. On the Artifact Signing account: Access control (IAM) > Add role
+   assignment > **Artifact Signing Certificate Profile Signer** > the app.
+
+### 3. GitHub
+
+Settings > Secrets and variables > Actions.
+
+| Name | Kind | Value |
+|---|---|---|
+| `AZURE_CLIENT_ID` | Secret | The app's Application (client) ID |
+| `AZURE_CLIENT_SECRET` | Secret | The client secret value |
+| `AZURE_TENANT_ID` | Secret | The Directory (tenant) ID |
+| `AZURE_SIGNING_ENDPOINT` | Variable | The account's endpoint URL |
+| `AZURE_SIGNING_ACCOUNT` | Variable | The Artifact Signing account name |
+| `AZURE_SIGNING_PROFILE` | Variable | The certificate profile name |
+
+### 4. Check
+
+Run the workflow by hand. The Windows job's step "Check the Windows
+signatures" lists each `.msi` and `.exe` with `Valid` and the certificate
+subject, and fails if a file is not signed.

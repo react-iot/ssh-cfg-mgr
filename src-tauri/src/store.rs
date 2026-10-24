@@ -7,14 +7,17 @@
 //! 3. Copy the old file to the backup folder.
 //! 4. Rename the temporary file over the config. A rename is atomic.
 //!
-//! This module uses Unix file modes. The app supports macOS and Linux only.
+//! File modes (0600, 0700) are set on Unix. On Windows, new files get the
+//! ACL of the folder they are in: in %USERPROFILE%\.ssh that is the user's
+//! own profile ACL.
+//! ponytail: no explicit Windows ACLs; add them if a user's .ssh folder is
+//! shared with other accounts.
 
 use std::{
     collections::hash_map::DefaultHasher,
     fs::{self, DirBuilder, OpenOptions},
     hash::{Hash, Hasher},
     io::{self, Read, Write},
-    os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
@@ -70,9 +73,7 @@ pub fn write(path: &Path, text: &str) -> Result<Option<PathBuf>, String> {
         .ok_or_else(|| format!("{} has no parent folder", target.display()))?;
     create_private_dir(dir)?;
 
-    let old_mode = fs::metadata(&target)
-        .ok()
-        .map(|m| m.permissions().mode() & 0o777);
+    let old_mode = fs::metadata(&target).ok().map(|m| file_mode(&m));
     let file_name = target
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -100,11 +101,48 @@ pub fn write(path: &Path, text: &str) -> Result<Option<PathBuf>, String> {
 }
 
 fn create_private_dir(dir: &Path) -> Result<(), String> {
-    DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(dir)
-        .map_err(|e| format!("Cannot make folder {}: {e}", dir.display()))
+    private_dir(dir).map_err(|e| format!("Cannot make folder {}: {e}", dir.display()))
+}
+
+/// Make `dir` and its parents, 0700 on Unix.
+pub(crate) fn private_dir(dir: &Path) -> io::Result<()> {
+    let mut builder = DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(dir)
+}
+
+/// Make a new file with `mode` on Unix. Fails if it exists.
+pub(crate) fn create_new(path: &Path, mode: u32) -> io::Result<fs::File> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, mode);
+    #[cfg(not(unix))]
+    let _ = mode;
+    options.open(path)
+}
+
+#[cfg(unix)]
+fn file_mode(meta: &fs::Metadata) -> u32 {
+    std::os::unix::fs::PermissionsExt::mode(&meta.permissions()) & 0o777
+}
+
+#[cfg(not(unix))]
+fn file_mode(_: &fs::Metadata) -> u32 {
+    0o600
+}
+
+#[cfg(unix)]
+fn set_mode(path: &Path, mode: u32) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+}
+
+#[cfg(not(unix))]
+fn set_mode(_: &Path, _: u32) -> io::Result<()> {
+    Ok(())
 }
 
 fn write_private(path: &Path, text: &str, mode: u32) -> Result<(), String> {
@@ -116,15 +154,10 @@ fn write_private(path: &Path, text: &str, mode: u32) -> Result<(), String> {
         Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(fail(e)),
         _ => {}
     }
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(mode)
-        .open(path)
-        .map_err(fail)?;
+    let mut file = create_new(path, mode).map_err(fail)?;
     file.write_all(text.as_bytes()).map_err(fail)?;
     file.sync_all().map_err(fail)?;
-    fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(fail)
+    set_mode(path, mode).map_err(fail)
 }
 
 /// Ask OpenSSH to read the file. It stops at the first bad line.
@@ -140,7 +173,11 @@ fn check(path: &Path) -> Result<(), String> {
         .spawn()
         .map_err(|e| match e.kind() {
             io::ErrorKind::NotFound => {
-                "Cannot check the config: the `ssh` command is not installed.".to_string()
+                if cfg!(windows) {
+                    "Cannot check the config: the `ssh` command is not installed. Add the Windows feature OpenSSH Client (Settings > System > Optional features).".to_string()
+                } else {
+                    "Cannot check the config: the `ssh` command is not installed.".to_string()
+                }
             }
             _ => format!("Cannot run ssh to check the config: {e}"),
         })?;
@@ -168,11 +205,12 @@ fn check(path: &Path) -> Result<(), String> {
         let _ = pipe.read_to_string(&mut stderr);
     }
     // ssh writes "<file>: line 2: Bad configuration option: x". The temp
-    // file name means nothing to the user.
-    let prefix = format!("{}: ", path.display());
+    // file name means nothing to the user. Match its name, not the whole
+    // path: OpenSSH for Windows writes the path with each \ doubled.
+    let marker = format!("{}: ", file_name(path));
     let message: Vec<&str> = stderr
         .lines()
-        .map(|line| line.strip_prefix(&prefix).unwrap_or(line))
+        .map(|line| line.split_once(&marker).map_or(line, |(_, rest)| rest))
         .filter(|line| !line.starts_with("terminating,"))
         .collect();
     Err(format!(
@@ -299,7 +337,8 @@ pub fn read_backup(path: &Path, name: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::symlink;
+    #[cfg(unix)]
+    use std::os::unix::fs::{PermissionsExt, symlink};
 
     /// A new empty folder for one test.
     fn temp_dir(name: &str) -> PathBuf {
@@ -310,6 +349,7 @@ mod tests {
         dir
     }
 
+    #[cfg(unix)]
     fn mode(path: &Path) -> u32 {
         fs::metadata(path).unwrap().permissions().mode() & 0o777
     }
@@ -322,6 +362,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn new_file_is_private_and_has_no_backup() {
         let dir = temp_dir("new");
         let path = dir.join(".ssh").join("config");
@@ -335,6 +376,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn existing_file_gets_backup_and_keeps_mode() {
         let dir = temp_dir("existing");
         let path = dir.join("config");
@@ -371,6 +413,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn symlink_stays_a_symlink() {
         let dir = temp_dir("symlink");
         let dotfiles = dir.join("dotfiles");

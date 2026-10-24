@@ -131,7 +131,10 @@ fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 fn view(path: &Path, loaded: &store::Loaded) -> ConfigView {
     let config = SshConfig::parse(&loaded.text);
-    let home = std::env::var("HOME").unwrap_or_default();
+    // USERPROFILE on Windows (Rust 1.85 and later), HOME elsewhere.
+    let home = std::env::home_dir()
+        .map(|h| h.display().to_string())
+        .unwrap_or_default();
     ConfigView {
         path: path.display().to_string(),
         exists: loaded.exists,
@@ -478,7 +481,7 @@ fn edit_file(
 fn editable_include(main: &Path, file: &str) -> Result<PathBuf, String> {
     let loaded = store::read(main)?;
     let config = SshConfig::parse(&loaded.text);
-    let home = std::env::var("HOME").unwrap_or_default();
+    let home = std::env::home_dir().unwrap_or_default();
     let found = include::resolve(main, &config, Path::new(&home));
     match found.iter().find(|f| f.file == file) {
         Some(f) if f.editable => Ok(PathBuf::from(&f.file)),

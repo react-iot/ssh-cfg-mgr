@@ -1,5 +1,5 @@
-# Build the app for macOS (universal) and Linux x86_64 + ARM64 (AppImage,
-# .deb, .rpm).
+# Build the app for macOS (universal), Linux x86_64 + ARM64 (AppImage,
+# .deb, .rpm) and Windows x64 (.msi, setup .exe).
 #
 # Every run builds and keeps the files as workflow artifacts:
 # - Push a tag vX.Y.Z (equal to "version" in src-tauri/tauri.conf.json):
@@ -9,7 +9,8 @@
 #   changes this file: build only. Use this to test a branch.
 #
 # macOS signing and notarization use repository secrets; see docs/RELEASING.md.
-# Without them the macOS build is not signed.
+# Without them the macOS build is not signed. Windows signing uses Azure
+# Artifact Signing secrets; without them the Windows build is not signed.
 name: Release
 
 on:
@@ -32,7 +33,13 @@ jobs:
             args: ""
           - platform: ubuntu-22.04-arm
             args: ""
+          - platform: windows-latest
+            args: ""
     runs-on: ${{ matrix.platform }}
+    # The run steps are bash, also on Windows (Git Bash on the runner).
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v5
 
@@ -110,10 +117,51 @@ jobs:
       # having the action upload any assets ... simply omit tagName,
       # releaseName and releaseId." The release job uploads instead, after
       # the .dmg is notarized.
+      # Azure Artifact Signing, through Tauri's bundle.windows.signCommand.
+      # The command is added with --config only when every value is set, so
+      # a build without them still works (not signed).
+      - name: Windows signing (Azure Artifact Signing)
+        if: runner.os == 'Windows'
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          for v in AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID SIGNING_ENDPOINT SIGNING_ACCOUNT SIGNING_PROFILE; do
+            if [ -z "${!v}" ]; then
+              echo "::warning::Windows build is NOT signed: $v is missing."; exit 0
+            fi
+          done
+          # A third-party crate (github.com/levminer/trusted-signing-cli):
+          # pinned, with its lock file.
+          cargo install artifact-signing-cli --version 0.12.0 --locked
+          config="$(cygpath -m "$RUNNER_TEMP")/windows-sign.json"
+          printf '{"bundle":{"windows":{"signCommand":"artifact-signing-cli -e %s -a %s -c %s %%1"}}}' \
+            "$SIGNING_ENDPOINT" "$SIGNING_ACCOUNT" "$SIGNING_PROFILE" > "$config"
+          for v in AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID; do
+            echo "$v=${!v}" >> "$GITHUB_ENV"
+          done
+          echo "SIGN_ARGS=--config $config" >> "$GITHUB_ENV"
+          echo "Signing: on"
+
       - name: Build
         uses: tauri-apps/tauri-action@v1
         with:
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} ${{ env.SIGN_ARGS }}
+
+      - name: Check the Windows signatures
+        if: runner.os == 'Windows' && env.SIGN_ARGS != ''
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem target/release/bundle/msi/*.msi, target/release/bundle/nsis/*.exe
+          foreach ($f in $files) {
+            $s = Get-AuthenticodeSignature $f.FullName
+            "$($f.Name): $($s.Status) $($s.SignerCertificate.Subject)"
+            if ($s.Status -ne 'Valid') { throw "$($f.Name) is not signed" }
+          }
 
       # Tauri notarizes and staples the .app, but only signs the .dmg
       # (tauri-bundler src/bundle/macos/dmg/mod.rs). Notarize and staple the
@@ -149,6 +197,8 @@ jobs:
             target/release/bundle/appimage/*.AppImage
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
+            target/release/bundle/msi/*.msi
+            target/release/bundle/nsis/*.exe
           if-no-files-found: error
 
   release:
@@ -171,5 +221,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "SSH Config Manager $GITHUB_REF_NAME" \
             --generate-notes \
-            --notes "Downloads for macOS (universal: Apple silicon and Intel) and Linux x86_64 and ARM64 (AppImage, .deb, .rpm).
+            --notes "Downloads for macOS (universal: Apple silicon and Intel), Linux x86_64 and ARM64 (AppImage, .deb, .rpm) and Windows x64 (.msi or setup .exe).
           See the README for how to install."

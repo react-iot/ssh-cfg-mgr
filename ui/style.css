@@ -424,4 +424,7 @@ button.trash:hover { color: var(--danger); border-color: var(--danger); }
 .keys .users button { padding: 1px 8px; font-size: 12px; }
 .keys .key-tools { width: 1%; white-space: nowrap; text-align: right; }
 .keys .key-tools button { padding: 2px 10px; font-size: 12px; }
-.key-form .field { max-width: 420px; }
+dialog.key-dialog { width: min(460px, 92vw); }
+dialog.key-dialog .field { font-size: 13px; }
+dialog.key-dialog .field input { width: 100%; }
+.hint.error { color: var(--warn); }
