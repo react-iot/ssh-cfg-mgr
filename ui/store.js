@@ -130,9 +130,7 @@ class Store extends EventTarget {
   entries() {
     const config = this.config;
     const list = [];
-    if (config.global.length > 0) {
-      list.push({ id: GLOBAL_ID, kind: "", name: "Global settings", settings: config.global, group: "" });
-    }
+    list.push({ id: GLOBAL_ID, kind: "", name: "Global settings", settings: config.global, raw: config.global_raw, revision: config.revision, group: "" });
     config.blocks.forEach((block, index) => {
       list.push({
         id: String(index),
@@ -344,7 +342,8 @@ class Store extends EventTarget {
     this.config = result.config;
     this.editing = null;
     this.confirmingDelete = false;
-    if (result.selected === null) this.selected = null;
+    // Global settings stay selected after their own save.
+    if (result.selected === null) this.selected = this.selected === GLOBAL_ID ? GLOBAL_ID : null;
     else if (file === null) this.selected = String(result.selected);
     else {
       const fileIndex = this.config.included.findIndex((f) => f.file === file);
@@ -359,6 +358,14 @@ class Store extends EventTarget {
   // newGroup: move the block to this group ("" for none); otherwise it stays.
   async saveSettings(entry, settings, pattern = entry.name, newGroup = undefined) {
     this.clearNotice();
+    if (entry.id === GLOBAL_ID) {
+      try {
+        this.#applyResult(await invoke("save_global", { revision: this.config.revision, settings }), "Saved.", null, "saved");
+      } catch (error) {
+        this.notice(String(error), "error");
+      }
+      return;
+    }
     const groupMode = entry.groupMode ?? prefs.newGroupMode;
     let group = entry.group;
     if (groupMode === "tag") {
@@ -390,7 +397,9 @@ class Store extends EventTarget {
     this.clearNotice();
     const editing = this.editing;
     try {
-      const result = editing.raw
+      const result = editing.global
+        ? await invoke("save_global_raw", { revision: editing.revision, text: editing.text })
+        : editing.raw
         ? await invoke("save_block_raw", { revision: editing.revision, file: editing.file, index: editing.index, text: editing.text })
         : await invoke("save_block", {
             revision: this.config.revision,
@@ -519,7 +528,7 @@ class Store extends EventTarget {
   startRaw(entry) {
     this.clearNotice();
     this.confirmingDelete = false;
-    this.editing = { raw: true, index: entry.index, file: entry.file, revision: entry.revision, kind: entry.kind, name: entry.name, text: entry.raw };
+    this.editing = { raw: true, global: entry.id === GLOBAL_ID, index: entry.index, file: entry.file, revision: entry.revision, kind: entry.kind, name: entry.name, text: entry.raw };
     this.emit();
   }
 

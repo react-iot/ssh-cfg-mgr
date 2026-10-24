@@ -432,3 +432,67 @@ fn move_global_directive_keeps_missing_final_newline() {
     config.move_global_directive(0, 1);
     assert_eq!(config.to_string(), "Include b\nInclude a");
 }
+
+#[test]
+fn edit_global_changes_lines_before_the_first_block() {
+    let mut config = parse();
+    config.edit_global(|g| {
+        g.set("AddKeysToAgent", "no");
+        g.set("ServerAliveInterval", "15");
+    });
+    assert_eq!(
+        config.to_string(),
+        SAMPLE.replace(
+            "AddKeysToAgent yes\n",
+            "AddKeysToAgent no\nServerAliveInterval 15\n"
+        )
+    );
+    config.edit_global(|g| g.remove("addkeystoagent"));
+    assert_eq!(
+        config.to_string(),
+        SAMPLE.replace("AddKeysToAgent yes\n", "ServerAliveInterval 15\n")
+    );
+}
+
+#[test]
+fn edit_global_adds_at_the_top_with_the_file_line_ending() {
+    let mut config = SshConfig::parse("Host a\r\n    User x\r\n");
+    config.edit_global(|g| g.set("Include", "config.d/*"));
+    assert_eq!(
+        config.to_string(),
+        "Include config.d/*\r\nHost a\r\n    User x\r\n"
+    );
+}
+
+#[test]
+fn edit_global_keeps_a_missing_last_newline() {
+    let mut config = SshConfig::parse("User x");
+    config.edit_global(|g| g.set("Port", "22"));
+    assert_eq!(config.to_string(), "User x\nPort 22");
+}
+
+#[test]
+fn global_text_stops_at_the_last_directive() {
+    assert_eq!(parse().global_text(), "AddKeysToAgent yes\n");
+    assert_eq!(SshConfig::parse("Host a\n").global_text(), "");
+}
+
+#[test]
+fn set_global_text_keeps_the_rest() {
+    let mut config = parse();
+    config
+        .set_global_text("# defaults\nAddKeysToAgent no\nInclude config.d/*\n\n")
+        .unwrap();
+    assert_eq!(
+        config.to_string(),
+        SAMPLE.replace(
+            "AddKeysToAgent yes\n",
+            "# defaults\nAddKeysToAgent no\nInclude config.d/*\n"
+        )
+    );
+    assert!(config.set_global_text("Host x\n").is_err());
+
+    let mut config = SshConfig::parse("Host a\r\n");
+    config.set_global_text("User x\n").unwrap();
+    assert_eq!(config.to_string(), "User x\r\nHost a\r\n");
+}
