@@ -135,7 +135,7 @@ input.mono { font-family: var(--mono); font-size: 13px; }
 .list li:hover { background: var(--bg); }
 .list li[aria-selected="true"] { background: var(--accent-soft); }
 
-.kind { font-size: 11px; color: var(--muted); width: 40px; flex: none; }
+.kind { font-size: 11px; color: var(--muted); flex: none; }
 .name { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .name.plain { font-family: inherit; font-weight: 500; }
 .sub { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }

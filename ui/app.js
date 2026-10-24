@@ -98,7 +98,9 @@ function renderList() {
     item.setAttribute("role", "option");
     item.setAttribute("aria-selected", String(entry.id === selected));
     const nameClass = entry.id === GLOBAL_ID ? "name plain" : "name";
-    item.append(make("span", "kind", entry.kind), make("span", nameClass, entry.name));
+    // Host is the default block kind, so only Match blocks get a label.
+    if (entry.kind === "Match") item.append(make("span", "kind", entry.kind));
+    item.append(make("span", nameClass, entry.name));
     const hostName = value(entry.settings, "HostName");
     if (hostName) item.append(make("span", "sub", hostName));
     item.addEventListener("click", () => select(entry.id));
