@@ -125,6 +125,17 @@ function valueEditor(keyword, current, onDone, onCancel) {
   // Tick and cross as one joined control, after a builder button if the
   // keyword's value has several parts.
   const pair = make("div", "segmented confirm");
+  if (PATH_KEYWORDS.has(keyword.toLowerCase())) {
+    pair.append(
+      iconButton(FOLDER, `Choose a file for ${keyword}`, async () => {
+        const picked = await pickFile(keyword, input.value);
+        if (picked) {
+          input.value = picked;
+          input.focus();
+        }
+      }),
+    );
+  }
   const builder = BUILDERS[keyword.toLowerCase()];
   if (builder) {
     pair.append(
@@ -161,6 +172,8 @@ const PATTERN_ROW = "pattern";
 let addKeyword = "";
 // The settings row whose trash was clicked once, waiting for the second click.
 let deleteRow = null;
+// A value from a builder or file picker, shown in the open row editor.
+let inlineValue = null;
 
 // View preferences, kept per user in this app's local storage. Storage can
 // fail (private mode, cleared data); the defaults work without it.
@@ -251,9 +264,12 @@ function grouped(blocks) {
     if (!groups.has(entry.group)) groups.set(entry.group, []);
     groups.get(entry.group).push(entry);
   }
+  // Groups made with "New group" have no hosts yet, so they are not in the file.
+  for (const name of newGroups) if (!groups.has(name)) groups.set(name, []);
   const named = [...groups.keys()].filter((g) => g);
   if (dir) named.sort((a, b) => dir * byName(a, b));
-  return [...named, ""].filter((g) => groups.has(g)).map((g) => [g, groups.get(g)]);
+  // "No group" is always there when groups are, so a host can be dragged out.
+  return [...named, ""].map((g) => [g, groups.get(g) ?? []]);
 }
 
 // ---- Notices ----
@@ -287,12 +303,20 @@ function renderList() {
   const global = shown.filter((e) => e.id === GLOBAL_ID);
   const sections = grouped(shown.filter((e) => e.id !== GLOBAL_ID));
   const hasGroups = sections.some(([group]) => group);
+  if (namingGroup) list.append(groupNameRow());
   for (const entry of global) list.append(listItem(entry));
   for (const [group, members] of sections) {
     if (hasGroups) {
       const head = make("li", "group-head", group || "No group");
       head.setAttribute("role", "presentation");
+      dropTarget(head, group);
       list.append(head);
+      if (!members.length) {
+        const hint = make("li", "drop-hint", group ? "Drag hosts here" : "Drag a host here to take it out of its group");
+        hint.setAttribute("role", "presentation");
+        dropTarget(hint, group);
+        list.append(hint);
+      }
     }
     for (const entry of members) list.append(listItem(entry));
   }
@@ -321,7 +345,65 @@ function listItem(entry) {
     item.append(visibilityButton(entry));
   }
   item.addEventListener("click", () => select(entry.id));
+  if (entry.id !== GLOBAL_ID && !editing) {
+    // Drag a host onto a group (or a host in it) to move it there.
+    item.draggable = true;
+    item.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData("text/plain", entry.id);
+      event.dataTransfer.effectAllowed = "move";
+    });
+    dropTarget(item, entry.group);
+  }
   return item;
+}
+
+// Groups made with "New group" that have no hosts yet, and whether the
+// name field for a new group is open.
+let newGroups = [];
+let namingGroup = false;
+
+// The name field at the top of the list for "New group".
+function groupNameRow() {
+  const row = make("li", "group-new");
+  row.setAttribute("role", "presentation");
+  const input = make("input");
+  input.placeholder = "Group name, then Enter";
+  input.setAttribute("aria-label", "New group name");
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      const name = input.value.trim();
+      if (name && !newGroups.includes(name)) newGroups.push(name);
+      namingGroup = false;
+      renderList();
+    } else if (event.key === "Escape") {
+      namingGroup = false;
+      renderList();
+    }
+  });
+  row.append(input);
+  queueMicrotask(() => input.focus());
+  return row;
+}
+
+function dropTarget(node, group) {
+  node.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    node.classList.add("drop-over");
+  });
+  node.addEventListener("dragleave", () => node.classList.remove("drop-over"));
+  node.addEventListener("drop", (event) => {
+    event.preventDefault();
+    node.classList.remove("drop-over");
+    moveToGroup(event.dataTransfer.getData("text/plain"), group);
+  });
+}
+
+// Save a host's group, stored the way the host already stores it.
+function moveToGroup(id, group) {
+  const entry = entries().find((e) => e.id === id);
+  if (!entry || entry.group === group) return;
+  saveSettings(entry, entry.settings, entry.name, group);
 }
 
 const EYE = "M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z";
@@ -480,10 +562,11 @@ function renderView(detail) {
     } else if (inlineRow === i) {
       const editor = valueEditor(
         setting.keyword,
-        setting.value,
+        inlineValue ?? setting.value,
         (value) => saveSettings(entry, entry.settings.map((s, j) => (j === i ? { ...s, value } : s))),
         () => {
           inlineRow = null;
+          inlineValue = null;
           render();
         },
       );
@@ -491,18 +574,32 @@ function renderView(detail) {
       queueMicrotask(() => editor.input.focus());
     } else {
       // Click the value to change it.
-      const value = button(setting.value, "value-button", () => {
-        inlineRow = i;
-        deleteRow = null;
-        render();
-      });
+      const value = button(setting.value, "value-button", () => editRow(i));
       value.title = "Click to change";
       cell.append(value);
     }
     row.append(make("td", "", setting.keyword), cell);
     if (editable) {
-      // Delete the row: the first click asks, the second deletes.
       const actions = make("td", "row-actions");
+      // Shortcuts on hover: build the value, or pick a file. The result opens
+      // in the field's editor; the tick saves it.
+      const key = setting.keyword.toLowerCase();
+      if (BUILDERS[key]) {
+        actions.append(
+          iconButton(WRENCH, `Build the ${setting.keyword} value`, () =>
+            openBuilder(setting.keyword, BUILDERS[key], setting.value, (built) => editRow(i, built)),
+          ),
+        );
+      }
+      if (PATH_KEYWORDS.has(key)) {
+        actions.append(
+          iconButton(FOLDER, `Choose a file for ${setting.keyword}`, async () => {
+            const picked = await pickFile(setting.keyword, setting.value);
+            if (picked) editRow(i, picked);
+          }),
+        );
+      }
+      // Delete the row: the first click asks, the second deletes.
       const confirming = deleteRow === i;
       const trash = iconButton(TRASH, confirming ? `Click again to delete ${setting.keyword}` : `Delete ${setting.keyword}`, () => {
         if (confirming) {
@@ -520,6 +617,14 @@ function renderView(detail) {
   });
   if (editable) table.append(addRow(entry));
   detail.append(table);
+}
+
+// Open the editor for settings row i, optionally with a new value in it.
+function editRow(i, value = null) {
+  inlineRow = i;
+  inlineValue = value;
+  deleteRow = null;
+  render();
 }
 
 // The last table row: choose a keyword, then enter its value.
@@ -555,7 +660,8 @@ function addRow(entry) {
 }
 
 // Save a block with new settings, from the detail table. The group stays.
-async function saveSettings(entry, settings, pattern = entry.name) {
+// newGroup: move the block to this group ("" for none); otherwise it stays.
+async function saveSettings(entry, settings, pattern = entry.name, newGroup = undefined) {
   clearNotice();
   const groupMode = entry.groupMode ?? prefs.newGroupMode;
   let group = entry.group;
@@ -564,6 +670,7 @@ async function saveSettings(entry, settings, pattern = entry.name) {
     group = value(settings, "Tag");
     settings = settings.filter((s) => s.keyword.toLowerCase() !== "tag");
   }
+  if (newGroup !== undefined) group = newGroup;
   try {
     const result = await invoke("save_block", {
       revision: config.revision,
@@ -576,6 +683,9 @@ async function saveSettings(entry, settings, pattern = entry.name) {
     inlineRow = null;
     addKeyword = "";
     deleteRow = null;
+    inlineValue = null;
+    // A new group that now has a host is in the file.
+    newGroups = newGroups.filter((g) => !result.config.blocks.some((b) => groupOf(b).group === g));
     applyResult(result, "Saved.");
   } catch (error) {
     showNotice(String(error), "error");
@@ -583,6 +693,30 @@ async function saveSettings(entry, settings, pattern = entry.name) {
 }
 
 const TICK = "M3 8.5l3.2 3.2L13 4.8";
+const FOLDER = "M2 4.5V12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3.5H3a1 1 0 0 0-1 1z";
+
+// Keywords whose value is a file. A socket or a path with %tokens is
+// typed by hand.
+const PATH_KEYWORDS = new Set(["identityfile", "certificatefile", "userknownhostsfile", "globalknownhostsfile"]);
+
+// The native file picker (Tauri dialog plugin). The plugin's JS package is
+// not loaded (no build step), so call its command directly. Returns a path
+// with the home folder written as ~, or null if cancelled.
+async function pickFile(keyword, current) {
+  const home = config.home;
+  const expand = (p) => (home && p.startsWith("~/") ? home + p.slice(1) : p);
+  const folder = current ? expand(current).replace(/\/[^/]*$/, "") : `${home}/.ssh`;
+  try {
+    const path = await invoke("plugin:dialog|open", {
+      options: { title: `Choose a file for ${keyword}`, defaultPath: folder || undefined },
+    });
+    if (typeof path !== "string") return null;
+    return home && path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+  } catch (error) {
+    showNotice(String(error), "error");
+    return null;
+  }
+}
 const WRENCH = "M10.5 2.2a3.3 3.3 0 0 0-3.9 4.2L2.4 10.6a1.4 1.4 0 0 0 2 2l4.2-4.2a3.3 3.3 0 0 0 4.2-3.9l-2 2-1.8-.5-.5-1.8z";
 
 // A dialog that builds a value from its parts (see builders.js). "Use"
@@ -695,9 +829,7 @@ function iconButton(path, label, onClick) {
 
 // ---- Detail: edit form ----
 
-// newGroup: the user chose "New group". A group is stored with its hosts,
-// so a new group starts as a new host with the Group field first.
-function startEdit(entry, newGroup = false) {
+function startEdit(entry) {
   clearNotice();
   confirmingDelete = false;
   // A block keeps the way its group is stored. One with no group uses the
@@ -727,7 +859,6 @@ function startEdit(entry, newGroup = false) {
         ],
         group: "",
         groupMode,
-        newGroup,
       };
   if (editing.index === null) selected = NEW_ID;
   render();
@@ -793,17 +924,8 @@ function renderEdit(detail) {
     if (event.key === "Escape") cancelEdit();
   });
 
-  const title = editing.newGroup
-    ? "New group"
-    : editing.duplicate
-      ? "Duplicate host"
-      : editing.index === null
-        ? "New host"
-        : `Edit ${editing.kind}`;
+  const title = editing.duplicate ? "Duplicate host" : editing.index === null ? "New host" : `Edit ${editing.kind}`;
   form.append(make("h1", "", title));
-  if (editing.newGroup) {
-    form.append(make("p", "hint", "A group is saved with its hosts. Enter the group name and its first host. You can add more hosts to it later."));
-  }
 
   const patternLabel = make("label", "field");
   patternLabel.append(
@@ -827,8 +949,7 @@ function renderEdit(detail) {
   groupLabel.append(make("span", "", "Group"));
   const group = make("input");
   group.value = editing.group;
-  group.placeholder = editing.newGroup ? "Work" : "Optional";
-  group.required = Boolean(editing.newGroup);
+  group.placeholder = "Optional";
   group.setAttribute("list", "groups");
   group.spellcheck = false;
   group.addEventListener("input", () => (editing.group = group.value));
@@ -840,9 +961,7 @@ function renderEdit(detail) {
       ? "Saved as a Tag line in this block. One word. Needs OpenSSH 9.4 or later."
       : "Saved as a \"# group:\" comment above this block. OpenSSH ignores it.",
   );
-  // For a new group the name comes first, before the host fields.
-  if (editing.newGroup) patternLabel.before(groupLabel, groupHint);
-  else form.append(groupLabel, groupHint);
+  form.append(groupLabel, groupHint);
 
   const rows = make("div", "settings");
   rows.append(make("span", "col-head", "Keyword"), make("span", "col-head", "Value"), make("span"));
@@ -966,6 +1085,7 @@ function select(id) {
     inlineRow = null;
     addKeyword = "";
     deleteRow = null;
+    inlineValue = null;
   }
   selected = id;
   confirmingDelete = false;
@@ -1039,6 +1159,7 @@ async function checkForChanges() {
     // Row numbers may have moved; close the value editor.
     inlineRow = null;
     deleteRow = null;
+    inlineValue = null;
     showConfig();
     setSync(`Reloaded at ${now()} · changed on disk`, "changed");
     showNotice("The file changed on disk. The list was reloaded.");
@@ -1129,7 +1250,14 @@ el("add-menu").addEventListener("click", (event) => {
   const item = event.target.closest("[data-add]");
   if (!item) return;
   showAddMenu(false);
-  if (!editing) startEdit(null, item.dataset.add === "group");
+  if (editing) return;
+  if (item.dataset.add === "group") {
+    // A new group is an empty section in the list; hosts are dragged into it.
+    namingGroup = true;
+    renderList();
+  } else {
+    startEdit(null);
+  }
 });
 el("add-menu").addEventListener("keydown", (event) => {
   const items = [...el("add-menu").querySelectorAll("button")];

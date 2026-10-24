@@ -98,6 +98,8 @@ struct ConfigView {
     blocks: Vec<BlockView>,
     /// True if writing the parsed file gives exactly the same bytes.
     lossless: bool,
+    /// The home folder, so the UI can write picked paths as `~/...`.
+    home: String,
 }
 
 #[derive(Serialize)]
@@ -128,6 +130,7 @@ fn view(path: &Path, loaded: &store::Loaded) -> ConfigView {
             .map(|i| BlockView::new(&config, i))
             .collect(),
         lossless: config.to_string() == loaded.text,
+        home: std::env::var("HOME").unwrap_or_default(),
     }
 }
 
@@ -390,6 +393,8 @@ fn clean_settings(settings: Vec<Setting>) -> Result<Vec<Setting>, String> {
 
 pub fn run() {
     tauri::Builder::default()
+        // The file picker for IdentityFile and other path keywords.
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             load_config,
             save_block,
