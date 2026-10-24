@@ -183,10 +183,12 @@ let inlineValue = null;
 // View preferences, kept per user in this app's local storage. Storage can
 // fail (private mode, cleared data); the defaults work without it.
 // newGroupMode: how a group is saved on a block that has none yet.
-const prefs = { newGroupMode: "comment", sort: "file" };
+// collapsed: names of closed groups in the list ("" is No group).
+const prefs = { newGroupMode: "comment", sort: "file", collapsed: [] };
 try {
   Object.assign(prefs, JSON.parse(localStorage.getItem("prefs") || "{}"));
 } catch {}
+if (!Array.isArray(prefs.collapsed)) prefs.collapsed = [];
 
 function savePrefs() {
   try {
@@ -311,11 +313,24 @@ function renderList() {
   if (namingGroup) list.append(groupNameRow());
   for (const entry of global) list.append(listItem(entry));
   for (const [group, members] of sections) {
+    // While filtering, show only groups that have matches.
+    if (filter && !members.length) continue;
+    // A filter shows matches in closed groups too, so nothing is hidden.
+    const closed = hasGroups && !filter && prefs.collapsed.includes(group);
     if (hasGroups) {
-      const head = make("li", "group-head", group || "No group");
+      const head = make("li", "group-head");
       head.setAttribute("role", "presentation");
+      const toggle = button("", "group-toggle", () => {
+        prefs.collapsed = closed ? prefs.collapsed.filter((g) => g !== group) : [...prefs.collapsed, group];
+        savePrefs();
+        renderList();
+      });
+      toggle.setAttribute("aria-expanded", String(!closed));
+      toggle.append(make("span", "chevron", closed ? "▸" : "▾"), make("span", "", group || "No group"), make("span", "group-count", String(members.length)));
+      head.append(toggle);
       dropTarget(head, group);
       list.append(head);
+      if (closed) continue;
       if (!members.length) {
         const hint = make("li", "drop-hint", group ? "Drag hosts here" : "Drag a host here to take it out of its group");
         hint.setAttribute("role", "presentation");
