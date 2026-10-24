@@ -36,15 +36,17 @@ finds for each keyword.
 ## Host groups
 
 You can put each `Host` or `Match` block in a group. The sidebar shows
-the groups as sections. Choose where the app stores a group at the
-bottom of the sidebar:
+the groups as sections. The app reads the group from the file, in one of
+two forms:
 
-| Setting | Stored as | Notes |
+| Form | In the file | Notes |
 |---|---|---|
-| `# group: comment` (default) | `# group: Work` on the line above the block | OpenSSH ignores comments. Works with every OpenSSH version. |
+| Comment (default) | `# group: Work` on the line above the block | OpenSSH ignores comments. Works with every OpenSSH version. |
 | Tag | `Tag work` in the block | One word. Needs OpenSSH 9.4 or later. You can use `Match tagged work` for settings that apply to the whole group. |
 
-The setting and the sort order are kept on your computer, not in the config.
+A block that already has a group keeps its form. A new group uses the
+form you choose in Settings (the gear button). Settings and the sort
+order are kept on your computer, not in the config.
 
 ## Goals
 

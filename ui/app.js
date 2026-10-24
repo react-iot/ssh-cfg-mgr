@@ -7,6 +7,7 @@ const { invoke } = window.__TAURI__.core;
 
 const GLOBAL_ID = "global";
 const NEW_ID = "new";
+const SETTINGS_ID = "settings";
 
 // Suggestions for the keyword field. Any keyword that OpenSSH knows works.
 const KEYWORDS = [
@@ -29,7 +30,8 @@ let confirmingDelete = false;
 
 // View preferences, kept per user in this app's local storage. Storage can
 // fail (private mode, cleared data); the defaults work without it.
-const prefs = { groupMode: "comment", sort: "file" };
+// newGroupMode: how a group is saved on a block that has none yet.
+const prefs = { newGroupMode: "comment", sort: "file" };
 try {
   Object.assign(prefs, JSON.parse(localStorage.getItem("prefs") || "{}"));
 } catch {}
@@ -40,9 +42,12 @@ function savePrefs() {
   } catch {}
 }
 
-// The group of a block: a "# group: <name>" comment above it, or its Tag.
+// The group of a block, from the file: a "# group: <name>" comment above
+// it, else its Tag. groupMode is how it is stored, or null for no group.
 function groupOf(block) {
-  return prefs.groupMode === "tag" ? value(block.settings, "Tag") : block.group_comment || "";
+  if (block.group_comment) return { group: block.group_comment, groupMode: "comment" };
+  const tag = value(block.settings, "Tag");
+  return tag ? { group: tag, groupMode: "tag" } : { group: "", groupMode: null };
 }
 
 // "user@host" that ssh connects to. Without HostName, ssh uses the alias,
@@ -92,7 +97,7 @@ function entries() {
       kind: block.kind,
       name: block.pattern,
       settings: block.settings,
-      group: groupOf(block),
+      ...groupOf(block),
     });
   });
   return list;
@@ -181,7 +186,37 @@ function listItem(entry) {
 
 // ---- Detail: view ----
 
+function renderSettings(detail) {
+  detail.append(make("h1", "", "Settings"));
+  const field = make("fieldset", "options");
+  field.append(make("legend", "", "Save a new group as"));
+  const choices = [
+    ["comment", "A \"# group: <name>\" comment above the block", "OpenSSH ignores it. Works with every OpenSSH version."],
+    ["tag", "A \"Tag <name>\" line in the block", "One word. Needs OpenSSH 9.4 or later. Lets \"Match tagged <name>\" add settings for the whole group."],
+  ];
+  for (const [mode, label, hint] of choices) {
+    const option = make("label", "option");
+    const radio = make("input");
+    radio.type = "radio";
+    radio.name = "new-group-mode";
+    radio.checked = prefs.newGroupMode === mode;
+    radio.addEventListener("change", () => {
+      prefs.newGroupMode = mode;
+      savePrefs();
+    });
+    const text = make("span", "text");
+    text.append(make("span", "", label), make("span", "hint", hint));
+    option.append(radio, text);
+    field.append(option);
+  }
+  detail.append(field);
+  detail.append(
+    make("p", "hint", "A block that already has a group keeps the way its group is stored. These settings are kept on this computer, not in the config."),
+  );
+}
+
 function renderView(detail) {
+  if (selected === SETTINGS_ID) return renderSettings(detail);
   const entry = entries().find((e) => e.id === selected);
   if (!entry) {
     const text = config.exists
@@ -245,6 +280,9 @@ function renderView(detail) {
 function startEdit(entry) {
   clearNotice();
   confirmingDelete = false;
+  // A block keeps the way its group is stored. One with no group uses the
+  // setting for new groups.
+  const groupMode = entry?.groupMode ?? prefs.newGroupMode;
   editing = entry
     ? {
         index: Number(entry.id),
@@ -252,9 +290,10 @@ function startEdit(entry) {
         pattern: entry.name,
         // In Tag mode the Group field is the Tag, so it is not a setting row.
         settings: entry.settings
-          .filter((s) => prefs.groupMode !== "tag" || s.keyword.toLowerCase() !== "tag")
+          .filter((s) => groupMode !== "tag" || s.keyword.toLowerCase() !== "tag")
           .map((s) => ({ ...s })),
         group: entry.group,
+        groupMode,
       }
     : {
         index: null,
@@ -265,6 +304,7 @@ function startEdit(entry) {
           { keyword: "User", value: "" },
         ],
         group: "",
+        groupMode,
       };
   if (!entry) selected = NEW_ID;
   render();
@@ -322,7 +362,7 @@ function renderEdit(detail) {
     make(
       "p",
       "hint",
-      prefs.groupMode === "tag"
+      editing.groupMode === "tag"
         ? "Saved as a Tag line in this block. One word. Needs OpenSSH 9.4 or later."
         : "Saved as a \"# group:\" comment above this block. OpenSSH ignores it.",
     ),
@@ -392,7 +432,7 @@ async function save() {
       pattern: editing.pattern,
       settings: editing.settings,
       group: editing.group,
-      groupMode: prefs.groupMode,
+      groupMode: editing.groupMode,
     });
     applyResult(result, "Saved.");
   } catch (error) {
@@ -461,38 +501,25 @@ for (const keyword of KEYWORDS) {
 }
 
 el("search").addEventListener("input", renderList);
-
-// The filter field shows only when the filter button is on. Closing it
-// clears the filter, so no host is hidden by a field you cannot see.
-function showFilter(show) {
-  const search = el("search");
-  search.hidden = !show;
-  el("filter").setAttribute("aria-expanded", String(show));
-  if (show) {
-    search.focus();
-  } else if (search.value) {
-    search.value = "";
+el("search").addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && el("search").value) {
+    el("search").value = "";
     renderList();
   }
-}
-el("filter").addEventListener("click", () => showFilter(el("search").hidden));
-el("search").addEventListener("keydown", (event) => {
-  if (event.key === "Escape") {
-    showFilter(false);
-    el("filter").focus();
-  }
 });
-// The sort button steps through these, then starts again.
+
+// The sort button steps through these, then starts again. CSS shows the
+// icon for the current one.
 const SORTS = [
-  { value: "file", label: "File order" },
-  { value: "asc", label: "A–Z" },
-  { value: "desc", label: "Z–A" },
+  { value: "file", label: "File order (not sorted)" },
+  { value: "asc", label: "Name A–Z" },
+  { value: "desc", label: "Name Z–A" },
 ];
 
 function showSort() {
   const sort = SORTS.find((s) => s.value === prefs.sort) ?? SORTS[0];
   prefs.sort = sort.value;
-  el("sort-label").textContent = sort.label;
+  el("sort").dataset.sort = sort.value;
   el("sort").title = `Sort: ${sort.label}. Click to change.`;
   el("sort").setAttribute("aria-label", el("sort").title);
 }
@@ -511,14 +538,7 @@ el("sort").addEventListener("click", () => {
   changed();
 });
 
-const groupMode = el("group-mode");
-// An unknown stored value falls back to the first option.
-if ([...groupMode.options].some((o) => o.value === prefs.groupMode)) groupMode.value = prefs.groupMode;
-else prefs.groupMode = groupMode.value;
-groupMode.addEventListener("change", () => {
-  prefs.groupMode = groupMode.value;
-  changed();
-});
+el("settings").addEventListener("click", () => select(SETTINGS_ID));
 el("reload").addEventListener("click", () => {
   clearNotice();
   load();
