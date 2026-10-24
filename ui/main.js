@@ -1,4 +1,4 @@
-// UI for SSH Cfg Mgr: wires the components to the store.
+// UI for SSH Config Manager: wires the components to the store.
 //
 // Data flows down: store.js holds the state, calls Rust, and emits `change`;
 // this draws the sidebar and the one detail view that fits the state.

@@ -1,6 +1,6 @@
 # Security policy
 
-SSH Cfg Mgr reads and writes files in `~/.ssh`. We take security problems
+SSH Config Manager reads and writes files in `~/.ssh`. We take security problems
 seriously.
 
 ## Report a problem

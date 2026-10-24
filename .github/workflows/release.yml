@@ -1,0 +1,139 @@
+# Build the app for macOS (universal) and Linux (AppImage, .deb, .rpm).
+#
+# - Push a tag vX.Y.Z (equal to "version" in src-tauri/tauri.conf.json):
+#   builds every platform and creates a DRAFT GitHub release with the files.
+#   Review it, then publish it by hand.
+# - Run it by hand (Actions > Release > Run workflow): builds only, and keeps
+#   the files as workflow artifacts. Use this to test a branch.
+#
+# macOS signing and notarization use repository secrets; see docs/RELEASING.md.
+# Without them the macOS build is not signed.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+      contents: write # create the draft release and upload files
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+          # The oldest supported Ubuntu, so the AppImage runs on older glibc.
+          - platform: ubuntu-22.04
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Tag must match the app version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match version ${version} in src-tauri/tauri.conf.json"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Tauri system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev patchelf xdg-utils
+
+      - run: npm ci
+
+      # Tauri signs when APPLE_CERTIFICATE and APPLE_CERTIFICATE_PASSWORD
+      # exist, even if empty, and GitHub gives a missing secret as "". So set
+      # each variable only when its secret has a value.
+      - name: macOS signing and notarization secrets
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set_env() { if [ -n "$2" ]; then echo "$1<<EOF_$1" >> "$GITHUB_ENV"; echo "$2" >> "$GITHUB_ENV"; echo "EOF_$1" >> "$GITHUB_ENV"; fi; }
+          if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_CERTIFICATE_PASSWORD" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            set_env APPLE_CERTIFICATE "$APPLE_CERTIFICATE"
+            set_env APPLE_CERTIFICATE_PASSWORD "$APPLE_CERTIFICATE_PASSWORD"
+            set_env APPLE_SIGNING_IDENTITY "$APPLE_SIGNING_IDENTITY"
+            echo "Signing: on"
+          else
+            echo "::warning::macOS build is NOT signed: APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD or APPLE_SIGNING_IDENTITY is missing."
+          fi
+          # Notarization: App Store Connect API key (preferred), or Apple ID.
+          if [ -n "$APPLE_API_ISSUER" ] && [ -n "$APPLE_API_KEY" ] && [ -n "$APPLE_API_KEY_P8" ]; then
+            key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+            printf '%s\n' "$APPLE_API_KEY_P8" > "$key"
+            set_env APPLE_API_ISSUER "$APPLE_API_ISSUER"
+            set_env APPLE_API_KEY "$APPLE_API_KEY"
+            set_env APPLE_API_KEY_PATH "$key"
+            echo "Notarization: API key"
+          elif [ -n "$APPLE_ID" ] && [ -n "$APPLE_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+            set_env APPLE_ID "$APPLE_ID"
+            set_env APPLE_PASSWORD "$APPLE_PASSWORD"
+            set_env APPLE_TEAM_ID "$APPLE_TEAM_ID"
+            echo "Notarization: Apple ID"
+          else
+            echo "::warning::macOS build is NOT notarized: no API key or Apple ID secrets."
+          fi
+
+      - name: Build and draft the release (tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: SSH Config Manager ${{ github.ref_name }}
+          releaseBody: |
+            Downloads for macOS (universal: Apple silicon and Intel) and Linux (AppImage, .deb, .rpm).
+            See the README for what is new and how to install.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+      # The tauri-action README: "If you only want to build the app without
+      # having the action upload any assets ... simply omit tagName,
+      # releaseName and releaseId."
+      - name: Build only (manual run)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: tauri-apps/tauri-action@v1
+        with:
+          args: ${{ matrix.args }}
+
+      - name: Keep the files (manual run)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ matrix.platform }}
+          # The workspace target folder: target/<triple>/release/bundle with
+          # --target, target/release/bundle without.
+          path: |
+            target/*/release/bundle/
+            target/release/bundle/
+          if-no-files-found: error

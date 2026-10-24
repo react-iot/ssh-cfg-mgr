@@ -1,4 +1,4 @@
-# SSH Cfg Mgr
+# SSH Config Manager
 
 A free, open-source desktop app for macOS and Linux that manages your
 `~/.ssh/config` file and SSH keys. Made by ReactIoT.
@@ -111,6 +111,20 @@ order are kept on your computer, not in the config.
 | `crates/sshconfig-lossless` | Rust library: reads and writes ssh_config files without loss |
 | `src-tauri/` | Tauri 2 app: Rust commands that the UI calls |
 | `ui/` | The UI: plain HTML, CSS and JavaScript, no build step |
+
+## Install
+
+Download the file for your system from
+[Releases](https://github.com/react-iot/ssh-cfg-mgr/releases):
+
+| System | File | How to install |
+|---|---|---|
+| macOS (Apple silicon and Intel) | `.dmg` | Open it, drag the app to Applications |
+| Debian, Ubuntu | `.deb` | `sudo apt install ./<file>.deb` |
+| Fedora, RHEL, openSUSE | `.rpm` | `sudo dnf install ./<file>.rpm` |
+| Other Linux | `.AppImage` | `chmod +x` the file, then run it |
+
+To make a release, see [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Build and test
 

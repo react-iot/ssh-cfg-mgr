@@ -1,4 +1,4 @@
-//! SSH Cfg Mgr desktop app.
+//! SSH Config Manager desktop app.
 //!
 //! The Rust side reads files and does the work. The web UI in `../ui` calls
 //! the functions marked `#[tauri::command]` with `invoke("name", args)`, and
@@ -595,7 +595,7 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running SSH Cfg Mgr");
+        .expect("error while running SSH Config Manager");
 }
 
 #[cfg(test)]

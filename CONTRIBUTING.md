@@ -1,4 +1,4 @@
-# Contributing to SSH Cfg Mgr
+# Contributing to SSH Config Manager
 
 Thank you for your help.
 
