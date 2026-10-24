@@ -1,7 +1,28 @@
+<p align="center">
+  <a href="https://reactiot.com.au">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="ui/assets/logo-lockup-horizontal-dark.svg" />
+      <img src="ui/assets/logo-lockup-horizontal.svg" alt="ReactIoT" width="280" />
+    </picture>
+  </a>
+</p>
+
 # SSH Config Manager
 
+[![CI](https://github.com/react-iot/ssh-cfg-mgr/actions/workflows/ci.yml/badge.svg)](https://github.com/react-iot/ssh-cfg-mgr/actions/workflows/ci.yml)
+[![Release](https://github.com/react-iot/ssh-cfg-mgr/actions/workflows/release.yml/badge.svg)](https://github.com/react-iot/ssh-cfg-mgr/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/react-iot/ssh-cfg-mgr?label=version)](https://github.com/react-iot/ssh-cfg-mgr/releases/latest)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-blue)](https://github.com/react-iot/ssh-cfg-mgr/releases/latest)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Sponsor](https://img.shields.io/badge/sponsor-%E2%99%A5-ea4aaa?logo=githubsponsors)](https://github.com/sponsors/react-iot)
+
 A free, open-source desktop app for macOS and Linux that manages your
-`~/.ssh/config` file and SSH keys. Made by ReactIoT.
+`~/.ssh/config` file and SSH keys. Made by [ReactIoT](https://reactiot.com.au).
+
+**[Download](https://github.com/react-iot/ssh-cfg-mgr/releases/latest)** ·
+[Product page](https://reactiot.com.au/products/ssh-config-manager) ·
+[Report an issue](https://github.com/react-iot/ssh-cfg-mgr/issues) ·
+[Sponsor](https://github.com/sponsors/react-iot)
 
 **Status:** early development. You can view, add, edit and delete `Host`
 and `Match` blocks, and sort and group them. Global settings are read-only

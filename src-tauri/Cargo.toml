@@ -1,6 +1,6 @@
 [package]
 name = "ssh-cfg-mgr"
-version = "0.1.0"
+version = "0.1.1"
 description = "Desktop app to manage ~/.ssh/config and SSH keys"
 edition.workspace = true
 license.workspace = true

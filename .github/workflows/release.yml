@@ -170,5 +170,6 @@ jobs:
           find dist -type f -print0 | xargs -0 gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "SSH Config Manager $GITHUB_REF_NAME" \
+            --generate-notes \
             --notes "Downloads for macOS (universal: Apple silicon and Intel) and Linux x86_64 and ARM64 (AppImage, .deb, .rpm).
-          See the README for what is new and how to install."
+          See the README for how to install."
