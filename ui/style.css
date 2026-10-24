@@ -313,8 +313,11 @@ td:has(.value-button, .value-editor) { padding: 3px 6px; }
 .value-button:hover { border-color: var(--border); background: var(--row-alt); }
 .value-editor { flex: 1; min-width: 0; font-family: var(--mono); font-size: 13px; padding: 4px 6px; }
 select.value-editor { padding-right: 30px; }
-.add-row td { background: var(--row-alt); }
+.add-row td { background: var(--row-alt); vertical-align: middle; }
 .add-row td:first-child { padding: 3px 6px; }
+/* The keyword select is as tall as the value editor beside it (30px); the
+   shared select padding made it 35px. */
+.add-row td:first-child select { height: 30px; padding-top: 0; padding-bottom: 0; }
 /* Field, tick and cross as one control: one border, square inner corners. */
 .value-line { display: flex; align-items: stretch; }
 .value-line > .value-editor { height: 30px; border-radius: 6px 0 0 6px; }
