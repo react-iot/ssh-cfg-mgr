@@ -164,6 +164,12 @@ cp ~/.ssh/config /tmp/test_config
 SSH_CFG_MGR_CONFIG=/tmp/test_config npm run dev
 ```
 
+## Support
+
+SSH Config Manager is free. If it saves you time, you can
+[sponsor ReactIoT on GitHub](https://github.com/sponsors/react-iot). Sponsors
+pay for the Apple Developer account that signs and notarizes the macOS app.
+
 ## Licence
 
 Apache License 2.0. See [LICENSE](LICENSE).

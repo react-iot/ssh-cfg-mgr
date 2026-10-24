@@ -7,6 +7,7 @@ const ABOUT_LINKS = [
   ["Source code", "https://github.com/react-iot/ssh-cfg-mgr"],
   ["Report an issue", "https://github.com/react-iot/ssh-cfg-mgr/issues"],
   ["License (Apache-2.0)", "https://github.com/react-iot/ssh-cfg-mgr/blob/main/LICENSE"],
+  ["Sponsor this project", "https://github.com/sponsors/react-iot"],
 ];
 
 export async function showAbout() {
