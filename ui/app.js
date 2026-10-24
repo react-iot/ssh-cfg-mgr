@@ -173,7 +173,7 @@ function listItem(entry) {
   const item = make("li");
   item.setAttribute("role", "option");
   item.setAttribute("aria-selected", String(entry.id === selected));
-  const nameClass = entry.id === GLOBAL_ID ? "name plain" : "name";
+  const nameClass = "name";
   // Host is the default block kind, so only Match blocks get a label.
   if (entry.kind === "Match") item.append(make("span", "kind", entry.kind));
   const text = make("span", "text");
@@ -255,7 +255,7 @@ function renderView(detail) {
   if (!entry) {
     const text = config.exists
       ? "Select a host to see its settings."
-      : "There is no SSH config file yet. Click + to add a host.";
+      : "There is no SSH config file yet. Click New host to make one.";
     detail.append(make("p", "empty", text));
     return;
   }
@@ -311,7 +311,9 @@ function renderView(detail) {
 
 // ---- Detail: edit form ----
 
-function startEdit(entry) {
+// newGroup: the user chose "New group". A group is stored with its hosts,
+// so a new group starts as a new host with the Group field first.
+function startEdit(entry, newGroup = false) {
   clearNotice();
   confirmingDelete = false;
   // A block keeps the way its group is stored. One with no group uses the
@@ -339,6 +341,7 @@ function startEdit(entry) {
         ],
         group: "",
         groupMode,
+        newGroup,
       };
   if (!entry) selected = NEW_ID;
   render();
@@ -362,7 +365,11 @@ function renderEdit(detail) {
     if (event.key === "Escape") cancelEdit();
   });
 
-  form.append(make("h1", "", editing.index === null ? "New host" : `Edit ${editing.kind}`));
+  const title = editing.newGroup ? "New group" : editing.index === null ? "New host" : `Edit ${editing.kind}`;
+  form.append(make("h1", "", title));
+  if (editing.newGroup) {
+    form.append(make("p", "hint", "A group is saved with its hosts. Enter the group name and its first host. You can add more hosts to it later."));
+  }
 
   const patternLabel = make("label", "field");
   patternLabel.append(
@@ -386,21 +393,22 @@ function renderEdit(detail) {
   groupLabel.append(make("span", "", "Group"));
   const group = make("input");
   group.value = editing.group;
-  group.placeholder = "Optional";
+  group.placeholder = editing.newGroup ? "Work" : "Optional";
+  group.required = Boolean(editing.newGroup);
   group.setAttribute("list", "groups");
   group.spellcheck = false;
   group.addEventListener("input", () => (editing.group = group.value));
   groupLabel.append(group);
-  form.append(groupLabel);
-  form.append(
-    make(
-      "p",
-      "hint",
-      editing.groupMode === "tag"
-        ? "Saved as a Tag line in this block. One word. Needs OpenSSH 9.4 or later."
-        : "Saved as a \"# group:\" comment above this block. OpenSSH ignores it.",
-    ),
+  const groupHint = make(
+    "p",
+    "hint",
+    editing.groupMode === "tag"
+      ? "Saved as a Tag line in this block. One word. Needs OpenSSH 9.4 or later."
+      : "Saved as a \"# group:\" comment above this block. OpenSSH ignores it.",
   );
+  // For a new group the name comes first, before the host fields.
+  if (editing.newGroup) patternLabel.before(groupLabel, groupHint);
+  else form.append(groupLabel, groupHint);
 
   const rows = make("div", "settings");
   rows.append(make("span", "col-head", "Keyword"), make("span", "col-head", "Value"), make("span"));
@@ -530,18 +538,65 @@ async function load() {
     return;
   }
 
+  editing = null;
+  confirmingDelete = false;
+  showConfig();
+}
+
+function showConfig() {
   el("path").textContent = config.path;
   const badge = el("badge");
   badge.hidden = false;
   badge.className = config.lossless ? "badge" : "badge warn";
   badge.textContent = config.lossless ? "Round-trip OK" : "Round-trip mismatch";
 
-  editing = null;
-  confirmingDelete = false;
   const ids = entries().map((e) => e.id);
-  if (!ids.includes(selected)) selected = ids.find((id) => id !== GLOBAL_ID) ?? ids[0] ?? null;
+  if (selected !== SETTINGS_ID && !ids.includes(selected)) {
+    selected = ids.find((id) => id !== GLOBAL_ID) ?? ids[0] ?? null;
+  }
   render();
 }
+
+// Another program (an editor, a dotfiles sync) can change the file. Read it
+// again every few seconds and when the window gets focus.
+// ponytail: polling, not a file watcher; reading one small file is cheap.
+const WATCH_MS = 2000;
+let checking = false;
+let warnedRevision = null;
+
+async function checkForChanges() {
+  if (!config || checking || document.hidden) return;
+  checking = true;
+  const before = config;
+  try {
+    const fresh = await invoke("load_config");
+    // A save finished while we read: its result is newer than ours.
+    if (config !== before || fresh.revision === config.revision) return;
+    if (editing) {
+      // Keep the form. A save now would fail, so say so once.
+      if (warnedRevision !== fresh.revision) {
+        warnedRevision = fresh.revision;
+        showNotice("The file changed on disk. Your changes cannot be saved. Copy what you need, click Cancel, and edit again.", "error");
+      }
+      return;
+    }
+    // Block ids are positions, which can move. Keep the same block selected.
+    const name = entries().find((e) => e.id === selected)?.name;
+    config = fresh;
+    const same = entries().find((e) => e.name === name);
+    if (same) selected = same.id;
+    confirmingDelete = false;
+    showConfig();
+    showNotice("The file changed on disk. The list was reloaded.");
+  } catch {
+    // The next check tries again. Reload shows the error.
+  } finally {
+    checking = false;
+  }
+}
+
+setInterval(checkForChanges, WATCH_MS);
+window.addEventListener("focus", checkForChanges);
 
 for (const keyword of KEYWORDS) {
   const option = document.createElement("option");
@@ -595,4 +650,33 @@ el("reload").addEventListener("click", () => {
 el("new-host").addEventListener("click", () => {
   if (!editing) startEdit(null);
 });
+
+// The sidebar + button opens a menu: New host or New group.
+function showAddMenu(show) {
+  el("add-menu").hidden = !show;
+  el("add").setAttribute("aria-expanded", String(show));
+  if (show) el("add-menu").querySelector("button").focus();
+}
+el("add").addEventListener("click", (event) => {
+  event.stopPropagation();
+  showAddMenu(el("add-menu").hidden);
+});
+el("add-menu").addEventListener("click", (event) => {
+  const item = event.target.closest("[data-add]");
+  if (!item) return;
+  showAddMenu(false);
+  if (!editing) startEdit(null, item.dataset.add === "group");
+});
+el("add-menu").addEventListener("keydown", (event) => {
+  const items = [...el("add-menu").querySelectorAll("button")];
+  const i = items.indexOf(document.activeElement);
+  if (event.key === "Escape") {
+    showAddMenu(false);
+    el("add").focus();
+  } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    items[(i + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length].focus();
+  }
+});
+document.addEventListener("click", () => showAddMenu(false));
 load();

@@ -1,14 +1,20 @@
-/* ReactIoT brand tokens, from website assets/styles/tokens.css.
-   Fonts are system stacks per brand guidelines: no font files, CSP stays 'self'. */
+/* Surfaces, text and selection use the system's colors, so the app looks
+   native and follows light/dark mode and the user's accent color. The
+   ReactIoT brand blue (website assets/styles/tokens.css) is for the logo,
+   primary buttons and focus only. System font: no font files, CSP stays 'self'. */
 :root {
   color-scheme: light dark;
-  --bg: #f7f9fc;          /* neutral-50 */
-  --panel: #ffffff;       /* neutral-0 */
-  --border: #dfe5ee;      /* Light Line */
-  --text: #1f2733;        /* Body Ink */
-  --heading: #0b1f3a;     /* Ink Navy */
-  --muted: #5a6573;       /* Muted Slate */
-  --accent: #2979ff;      /* React IoT Blue: borders, focus, selection */
+  --bg: Canvas;
+  --panel: Canvas;
+  --text: CanvasText;
+  --heading: CanvasText;
+  --muted: color-mix(in srgb, CanvasText 60%, Canvas);
+  --border: color-mix(in srgb, CanvasText 12%, Canvas);
+  --row-alt: color-mix(in srgb, CanvasText 4%, Canvas);
+  --row-hover: color-mix(in srgb, CanvasText 8%, Canvas);
+  --selected: Highlight;
+  --selected-text: HighlightText;
+  --accent: #2979ff;      /* React IoT Blue: focus, borders */
   --accent-fill: #1f63d6; /* brand-hover: white on #2979ff is 3.98:1, below AA */
   --accent-ink: #174fb0;  /* brand-press: accent text on soft fill, 6.95:1 */
   --accent-soft: #f0f6ff; /* Panel Tint */
@@ -16,18 +22,28 @@
   --warn-soft: #fdf6ea;
   --danger: #b42318;      /* brand #ef4444 fails AA with white text */
   --on-accent: #ffffff;
-  --sans: "Helvetica Neue", Helvetica, Arial, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --mono: "SF Mono", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* macOS WebKit has the AppKit semantic colors (labelColor, separatorColor,
+   alternating row colors, the accent-colored selection). Linux uses the
+   standard system colors above. */
+@supports (color: -apple-system-label) {
+  :root {
+    --text: -apple-system-label;
+    --heading: -apple-system-label;
+    --muted: -apple-system-secondary-label;
+    --border: -apple-system-separator;
+    --row-alt: -apple-system-odd-alternating-content-background;
+    --row-hover: -apple-system-unemphasized-selected-content-background;
+    --selected: -apple-system-selected-content-background;
+    --selected-text: -apple-system-alternate-selected-text;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #060912;          /* neutral-950 */
-    --panel: #0b1220;       /* neutral-900 */
-    --border: #1f2a3d;
-    --text: #e2e7ee;        /* neutral-200 */
-    --heading: #f2f5fa;
-    --muted: #b6bfce;
     --accent: #7fb0ff;      /* Sky: highlight on dark */
     --accent-fill: #7fb0ff;
     --accent-ink: #7fb0ff;
@@ -108,7 +124,7 @@ button.icon:hover { color: var(--danger); border-color: var(--danger); }
 .sort[data-sort="asc"] .sort-asc,
 .sort[data-sort="desc"] .sort-desc { display: block; }
 .segmented button.sort:not([data-sort="file"]) { color: var(--text); }
-button.add { font-size: 20px; font-weight: 500; line-height: 1; color: var(--accent-ink); }
+button.add { color: var(--accent-ink); }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 input, select {
@@ -132,7 +148,12 @@ input.mono { font-family: var(--mono); font-size: 13px; }
   background: var(--panel);
 }
 
-.sidebar-tools { margin: 12px; }
+.sidebar-tools { position: relative; margin: 12px; }
+
+.menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 10; min-width: 150px; display: flex; flex-direction: column; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); }
+.menu[hidden] { display: none; }
+.menu button { border: none; background: none; text-align: left; padding: 6px 10px; border-radius: 5px; }
+.menu button:hover, .menu button:focus-visible { background: var(--selected); color: var(--selected-text); outline: none; }
 
 .sidebar.locked .list,
 .sidebar.locked .sidebar-tools,
@@ -148,7 +169,9 @@ input.mono { font-family: var(--mono); font-size: 13px; }
   border-radius: 6px;
   cursor: pointer;
 }
-.list li:hover { background: var(--bg); }
+/* Zebra rows, counting host rows only, so group headers do not shift the stripes. */
+.list li[role="option"]:nth-child(even of [role="option"]) { background: var(--row-alt); }
+.list li:hover { background: var(--row-hover); }
 .list li.group-head { display: block; padding: 12px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); cursor: default; }
 .list li.group-head:hover { background: none; }
 .list li.off .text { opacity: 0.5; }
@@ -162,18 +185,19 @@ button.visibility:hover { color: var(--accent); }
 .list li[aria-selected="true"] button.visibility,
 .list li.off button.visibility,
 button.visibility:focus-visible { opacity: 1; }
-.list li[aria-selected="true"] { background: var(--accent-soft); }
+.list li[role="option"][aria-selected="true"] { background: var(--selected); color: var(--selected-text); }
+.list li[aria-selected="true"] :is(.sub, .kind, button.visibility) { color: inherit; opacity: 0.8; }
 
 .kind { font-size: 11px; color: var(--muted); flex: none; }
-.name { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.name.plain { font-family: inherit; font-weight: 500; }
+.name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .text { display: flex; flex-direction: column; min-width: 0; }
-.sub { color: var(--muted); font-family: var(--mono); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sub { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .sidebar-foot { padding: 8px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 .count { margin: 0; }
 
 button.icon-only { display: grid; place-items: center; padding: 0 8px; height: 30px; color: var(--muted); }
+button.with-icon { display: flex; align-items: center; gap: 6px; height: 30px; }
 
 .options { max-width: 760px; margin: 16px 0; padding: 0; border: none; display: flex; flex-direction: column; gap: 10px; }
 .options legend { margin-bottom: 8px; font-weight: 600; color: var(--heading); }
@@ -200,7 +224,7 @@ button.icon-only { display: grid; place-items: center; padding: 0 8px; height: 3
 .col-head { font-size: 12px; font-weight: 600; color: var(--muted); }
 .form-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 
-.detail h1 { margin: 0 0 4px; color: var(--heading); font-size: 20px; font-family: var(--mono); font-weight: 600; word-break: break-all; }
+.detail h1 { margin: 0 0 4px; color: var(--heading); font-size: 20px; font-weight: 600; word-break: break-all; }
 .detail .lead { margin: 0 0 20px; color: var(--muted); }
 
 table { width: 100%; max-width: 760px; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
