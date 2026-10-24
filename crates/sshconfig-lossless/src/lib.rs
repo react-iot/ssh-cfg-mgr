@@ -485,6 +485,69 @@ impl SshConfig {
         true
     }
 
+    /// Move the block at `from` so that it ends up at `to` (an index in the
+    /// new order). Returns false if either index is out of range.
+    ///
+    /// The comments directly above the block move with it. The spacing it
+    /// leaves is closed up, and the comments above the block it is put in
+    /// front of stay with that block, as in [`SshConfig::insert_host`].
+    ///
+    /// OpenSSH uses the first value it finds, so this can change which
+    /// settings apply.
+    pub fn move_block(&mut self, from: usize, to: usize) -> bool {
+        let len = self.blocks.len();
+        if from >= len || to >= len {
+            return false;
+        }
+        if from == to {
+            return true;
+        }
+        let eol = self.eol_style();
+        let ended_without_newline = self.last_line_mut().is_some_and(|l| l.eol.is_empty());
+
+        // Take the block and its comments; leave what followed it in place.
+        let comments = take_comment_suffix(self.lines_before_mut(from));
+        let mut block = self.blocks.remove(from);
+        let after = block.body.split_off(block.own_len());
+        let before = self.lines_before_mut(from);
+        while before.last().is_some_and(Line::is_blank) {
+            before.pop();
+        }
+        before.extend(after);
+
+        // Put it in front of the block now at `to` (or at the end).
+        let before = self.lines_before_mut(to);
+        let displaced = take_comment_suffix(before);
+        if before.last().is_some_and(|line| !line.is_blank()) {
+            before.push(Line::blank(&eol));
+        }
+        before.extend(comments);
+        if to < self.blocks.len() || !displaced.is_empty() {
+            block.body.push(Line::blank(&eol));
+        }
+        block.body.extend(displaced);
+        self.blocks.insert(to, block);
+
+        // Only the last line of a file may have no newline.
+        for line in self.lines_mut() {
+            if line.eol.is_empty() {
+                line.eol.clone_from(&eol);
+            }
+        }
+        if ended_without_newline && let Some(last) = self.last_line_mut() {
+            last.eol.clear();
+        }
+        true
+    }
+
+    fn lines_mut(&mut self) -> impl Iterator<Item = &mut Line> {
+        self.global.iter_mut().chain(
+            self.blocks
+                .iter_mut()
+                .flat_map(|b| std::iter::once(&mut b.header).chain(b.body.iter_mut())),
+        )
+    }
+
     /// The text of the block at `index`, as written: its header and its
     /// lines up to the last directive. The blank lines and comments after
     /// that are not part of it (see [`SshConfig::set_block_text`]).

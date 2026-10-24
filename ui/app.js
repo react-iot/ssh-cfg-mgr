@@ -357,7 +357,9 @@ function listItem(entry) {
       event.dataTransfer.setData("text/plain", entry.id);
       event.dataTransfer.effectAllowed = "move";
     });
-    dropTarget(item, entry.group);
+    // In file order a host can also be dropped before or after another.
+    if (prefs.sort === "file") reorderTarget(item, entry);
+    else dropTarget(item, entry.group);
   }
   return item;
 }
@@ -405,6 +407,55 @@ function dropTarget(node, group) {
 }
 
 // Save a host's group, stored the way the host already stores it.
+// Drop on a host: the top half puts the dragged host before it, the bottom
+// half after it. It also joins that host's group.
+function reorderTarget(node, target) {
+  // offsetY is relative to the child under the pointer, so use the row's box.
+  const after = (event) => {
+    const box = node.getBoundingClientRect();
+    return event.clientY - box.top > box.height / 2;
+  };
+  const clear = () => node.classList.remove("drop-before", "drop-after");
+  node.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    clear();
+    node.classList.add(after(event) ? "drop-after" : "drop-before");
+  });
+  node.addEventListener("dragleave", clear);
+  node.addEventListener("drop", (event) => {
+    event.preventDefault();
+    clear();
+    reorder(event.dataTransfer.getData("text/plain"), target, after(event));
+  });
+}
+
+async function reorder(id, target, after) {
+  const dragged = entries().find((e) => e.id === id);
+  if (!dragged || dragged.id === target.id) return;
+  const from = Number(dragged.id);
+  // The index in the new order: the target moves up by one if the dragged
+  // host was above it.
+  let to = Number(target.id) + (after ? 1 : 0);
+  if (from < to) to -= 1;
+  const newGroup = dragged.group === target.group ? undefined : target.group;
+  if (to === from) {
+    if (newGroup !== undefined) moveToGroup(id, newGroup);
+    return;
+  }
+  clearNotice();
+  try {
+    const result = await invoke("move_block", { revision: config.revision, from, to });
+    if (newGroup === undefined) return applyResult(result, "Moved.");
+    // Then join the target's group, as a second save.
+    config = result.config;
+    const moved = entries().find((e) => e.id === String(to));
+    await saveSettings(moved, moved.settings, moved.name, newGroup);
+  } catch (error) {
+    showNotice(String(error), "error");
+  }
+}
+
 function moveToGroup(id, group) {
   const entry = entries().find((e) => e.id === id);
   if (!entry || entry.group === group) return;

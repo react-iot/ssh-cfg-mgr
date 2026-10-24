@@ -324,3 +324,68 @@ fn set_block_text_keeps_crlf_and_missing_final_newline() {
         "Host a\r\n    User x\r\nHost b\r\n    User z"
     );
 }
+
+#[test]
+fn move_block_takes_its_comments_and_closes_the_gap() {
+    let mut config = parse();
+    assert!(config.move_block(1, 0));
+    assert_eq!(
+        config.to_string(),
+        "\
+AddKeysToAgent yes
+
+Host edge
+    HostName 10.0.0.5
+
+# Gateways
+Host gw
+    User root
+    IdentityFile ~/.ssh/a
+    IdentityFile ~/.ssh/b
+
+# Defaults for all hosts
+Host *
+    ServerAliveInterval 30
+"
+    );
+    // Back again gives the original text.
+    assert!(config.move_block(0, 1));
+    assert_eq!(config.to_string(), SAMPLE);
+}
+
+#[test]
+fn move_block_to_the_end_and_out_of_range() {
+    let mut config = parse();
+    assert!(config.move_block(0, 2));
+    assert_eq!(
+        config.to_string(),
+        "\
+AddKeysToAgent yes
+
+Host edge
+    HostName 10.0.0.5
+
+# Defaults for all hosts
+Host *
+    ServerAliveInterval 30
+
+# Gateways
+Host gw
+    User root
+    IdentityFile ~/.ssh/a
+    IdentityFile ~/.ssh/b
+"
+    );
+    assert!(!config.move_block(0, 3));
+    assert!(!config.move_block(3, 0));
+}
+
+#[test]
+fn move_block_keeps_missing_final_newline() {
+    let mut config = SshConfig::parse("Host a\n    User x\n\nHost b\n    User y");
+    config.move_block(1, 0);
+    assert_eq!(
+        config.to_string(),
+        "Host b\n    User y\n\nHost a\n    User x"
+    );
+}

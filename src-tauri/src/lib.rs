@@ -248,6 +248,23 @@ async fn save_block_raw(
     })
 }
 
+/// Move the block at `from` to position `to`, with the comments above it.
+/// Order matters: OpenSSH uses the first value it finds.
+#[tauri::command]
+async fn move_block(
+    app: tauri::AppHandle,
+    revision: String,
+    from: usize,
+    to: usize,
+) -> Result<SaveResult, String> {
+    edit(&app, &revision, |config| {
+        if !config.move_block(from, to) {
+            return Err(CHANGED_ON_DISK.to_string());
+        }
+        Ok(Some(to))
+    })
+}
+
 /// The backups of the config, newest first.
 #[tauri::command]
 async fn list_backups(app: tauri::AppHandle) -> Result<Vec<store::Backup>, String> {
@@ -469,7 +486,8 @@ pub fn run() {
             save_block_raw,
             list_backups,
             read_backup,
-            restore_backup
+            restore_backup,
+            move_block
         ])
         .setup(|app| {
             app.set_menu(menu_with_about(app.handle())?)?;
