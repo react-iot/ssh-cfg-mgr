@@ -52,6 +52,16 @@ On removes the `#~` again, so you get back exactly the text you had. The
 app uses `#~`, not plain `#`, because a normal comment can also start with
 `# Host`.
 
+## Include files
+
+Hosts in files brought in by `Include` are listed in their own section,
+one per file, read-only. The app follows OpenSSH's rules: several paths
+per line, wildcards in lexical order, `~`, `${VAR}`, and relative paths
+in `~/.ssh`. An `Include` inside a `Host` or `Match` block is shown with
+"only for ...". A path with a token such as `%h` depends on the host, so
+it is shown with that reason instead. A save is checked with `ssh -G`,
+which also reads the included files.
+
 ## Host groups
 
 You can put each `Host` or `Match` block in a group. The sidebar shows

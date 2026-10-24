@@ -4,6 +4,7 @@
 //! the functions marked `#[tauri::command]` with `invoke("name", args)`, and
 //! gets the return value as JSON.
 
+mod include;
 mod store;
 
 use serde::{Deserialize, Serialize};
@@ -104,6 +105,8 @@ struct ConfigView {
     home: String,
     /// The whole file, to compare with a backup in the history view.
     text: String,
+    /// Files brought in by Include lines, in the order ssh reads them.
+    included: Vec<IncludedView>,
 }
 
 #[derive(Serialize)]
@@ -125,6 +128,7 @@ fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 fn view(path: &Path, loaded: &store::Loaded) -> ConfigView {
     let config = SshConfig::parse(&loaded.text);
+    let home = std::env::var("HOME").unwrap_or_default();
     ConfigView {
         path: path.display().to_string(),
         exists: loaded.exists,
@@ -134,8 +138,35 @@ fn view(path: &Path, loaded: &store::Loaded) -> ConfigView {
             .map(|i| BlockView::new(&config, i))
             .collect(),
         lossless: config.to_string() == loaded.text,
-        home: std::env::var("HOME").unwrap_or_default(),
+        home: home.clone(),
         text: loaded.text.clone(),
+        included: include::resolve(path, &config, Path::new(&home))
+            .into_iter()
+            .map(IncludedView::from)
+            .collect(),
+    }
+}
+
+/// A file brought in by an Include line, with its blocks (read-only).
+#[derive(Serialize)]
+struct IncludedView {
+    #[serde(flatten)]
+    file: include::IncludedFile,
+    blocks: Vec<BlockView>,
+}
+
+impl From<include::IncludedFile> for IncludedView {
+    fn from(file: include::IncludedFile) -> Self {
+        let blocks = file
+            .config
+            .as_ref()
+            .map(|c| {
+                (0..c.blocks().len())
+                    .map(|i| BlockView::new(c, i))
+                    .collect()
+            })
+            .unwrap_or_default();
+        IncludedView { file, blocks }
     }
 }
 

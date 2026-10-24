@@ -258,6 +258,22 @@ function entries() {
       ...groupOf(block),
     });
   });
+  // Hosts from included files: read-only, with the file they come from.
+  (config.included ?? []).forEach((file, fileIndex) => {
+    file.blocks.forEach((block, index) => {
+      list.push({
+        id: `inc:${fileIndex}:${index}`,
+        kind: block.kind,
+        name: block.pattern,
+        settings: block.settings,
+        enabled: block.enabled,
+        group: "",
+        readOnly: true,
+        file,
+        fileIndex,
+      });
+    });
+  });
   return list;
 }
 
@@ -310,7 +326,7 @@ function renderList() {
   });
 
   const global = shown.filter((e) => e.id === GLOBAL_ID);
-  const sections = grouped(shown.filter((e) => e.id !== GLOBAL_ID));
+  const sections = grouped(shown.filter((e) => e.id !== GLOBAL_ID && !e.readOnly));
   const hasGroups = sections.some(([group]) => group);
   if (namingGroup) list.append(groupNameRow());
   for (const entry of global) list.append(listItem(entry));
@@ -320,16 +336,7 @@ function renderList() {
     // A filter shows matches in closed groups too, so nothing is hidden.
     const closed = hasGroups && !filter && prefs.collapsed.includes(group);
     if (hasGroups) {
-      const head = make("li", "group-head");
-      head.setAttribute("role", "presentation");
-      const toggle = button("", "group-toggle", () => {
-        prefs.collapsed = closed ? prefs.collapsed.filter((g) => g !== group) : [...prefs.collapsed, group];
-        savePrefs();
-        renderList();
-      });
-      toggle.setAttribute("aria-expanded", String(!closed));
-      toggle.append(chevron(), make("span", "", group || "No group"), make("span", "group-count", String(members.length)));
-      head.append(toggle);
+      const head = sectionHead(group || "No group", group, members.length, closed);
       // An empty group exists only here (the file has no hosts in it), so
       // removing it changes nothing on disk.
       if (!members.length && newGroups.includes(group)) {
@@ -353,11 +360,47 @@ function renderList() {
     for (const entry of members) list.append(listItem(entry));
   }
 
+  // One section per included file, after the config's own hosts.
+  (config.included ?? []).forEach((file, fileIndex) => {
+    const members = shown.filter((e) => e.fileIndex === fileIndex);
+    if (filter && !members.length) return;
+    const key = `file:${file.path}`;
+    const closed = !filter && prefs.collapsed.includes(key);
+    const head = sectionHead(`Included: ${file.path}`, key, members.length, closed);
+    head.classList.add("include-head");
+    head.title = `From "Include ${file.pattern}" in ${file.from}${file.condition ? `, only for ${file.condition}` : ""}. Read-only.`;
+    list.append(head);
+    if (closed) return;
+    const note = file.error ?? (members.length ? "" : "No hosts in this file.");
+    if (note) {
+      const li = make("li", "include-note", note);
+      li.setAttribute("role", "presentation");
+      list.append(li);
+    }
+    for (const entry of members) list.append(listItem(entry));
+  });
+
   const hosts = config.blocks.filter((b) => b.kind === "Host").length;
   const matches = config.blocks.length - hosts;
+  const included = all.filter((e) => e.readOnly).length;
   el("count").textContent = filter
     ? `${shown.length} of ${all.length} shown`
-    : `${plural(hosts, "host")}, ${plural(matches, "match block")}`;
+    : `${plural(hosts, "host")}, ${plural(matches, "match block")}${included ? `, ${included} included` : ""}`;
+}
+
+// A section header that opens and closes; `key` is remembered when closed.
+function sectionHead(label, key, count, closed) {
+  const head = make("li", "group-head");
+  head.setAttribute("role", "presentation");
+  const toggle = button("", "group-toggle", () => {
+    prefs.collapsed = closed ? prefs.collapsed.filter((g) => g !== key) : [...prefs.collapsed, key];
+    savePrefs();
+    renderList();
+  });
+  toggle.setAttribute("aria-expanded", String(!closed));
+  toggle.append(chevron(), make("span", "section-label", label), make("span", "group-count", String(count)));
+  head.append(toggle);
+  return head;
 }
 
 function listItem(entry) {
@@ -372,12 +415,12 @@ function listItem(entry) {
   const target = connectTarget(entry);
   if (target) text.append(make("span", "sub", target));
   item.append(text);
-  if (entry.id !== GLOBAL_ID) {
+  if (entry.id !== GLOBAL_ID && !entry.readOnly) {
     item.classList.toggle("off", !entry.enabled);
     item.append(visibilityButton(entry));
   }
   item.addEventListener("click", () => select(entry.id));
-  if (entry.id !== GLOBAL_ID && !editing) {
+  if (entry.id !== GLOBAL_ID && !entry.readOnly && !editing) {
     // Drag a host onto a group (or a host in it) to move it there.
     item.draggable = true;
     item.addEventListener("dragstart", (event) => {
@@ -768,6 +811,8 @@ function renderView(detail) {
   const title = make("h1");
   if (entry.id === GLOBAL_ID) {
     title.textContent = entry.name;
+  } else if (entry.readOnly) {
+    title.append(make("span", "kind-label", entry.kind), make("span", "", entry.name));
   } else if (inlineRow === PATTERN_ROW) {
     // Edit the Host pattern or Match criteria in place.
     const editor = valueEditor(
@@ -791,7 +836,7 @@ function renderView(detail) {
     title.append(make("span", "kind-label", entry.kind), name);
   }
   head.append(title);
-  if (entry.id !== GLOBAL_ID) {
+  if (entry.id !== GLOBAL_ID && !entry.readOnly) {
     const actions = make("div", "actions");
     if (confirmingDelete) {
       actions.append(
@@ -825,12 +870,14 @@ function renderView(detail) {
   const lead =
     entry.id === GLOBAL_ID
       ? "These settings are before the first Host or Match line. They apply to all hosts. This version cannot edit them."
-      : entry.enabled
+      : entry.readOnly
+        ? `Read-only. From ${entry.file.path}, included by "Include ${entry.file.pattern}" in ${entry.file.from}${entry.file.condition ? `, only for ${entry.file.condition}` : ""}.`
+        : entry.enabled
         ? ""
         : "Off: commented out with #~, so OpenSSH ignores it.";
   if (lead) detail.append(make("p", "lead", lead));
 
-  const editable = entry.id !== GLOBAL_ID;
+  const editable = entry.id !== GLOBAL_ID && !entry.readOnly;
   if (entry.settings.length === 0 && !editable) {
     detail.append(make("p", "empty", "This block has no settings."));
     return;

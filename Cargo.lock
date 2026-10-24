@@ -3197,6 +3197,7 @@ dependencies = [
 name = "ssh-cfg-mgr"
 version = "0.1.0"
 dependencies = [
+ "glob",
  "serde",
  "sshconfig-lossless",
  "tauri",
