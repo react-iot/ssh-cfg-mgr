@@ -102,6 +102,8 @@ struct ConfigView {
     lossless: bool,
     /// The home folder, so the UI can write picked paths as `~/...`.
     home: String,
+    /// The whole file, to compare with a backup in the history view.
+    text: String,
 }
 
 #[derive(Serialize)]
@@ -133,6 +135,7 @@ fn view(path: &Path, loaded: &store::Loaded) -> ConfigView {
             .collect(),
         lossless: config.to_string() == loaded.text,
         home: std::env::var("HOME").unwrap_or_default(),
+        text: loaded.text.clone(),
     }
 }
 
@@ -242,6 +245,34 @@ async fn save_block_raw(
         }
         config.set_block_text(index, &text)?;
         Ok(Some(index))
+    })
+}
+
+/// The backups of the config, newest first.
+#[tauri::command]
+async fn list_backups(app: tauri::AppHandle) -> Result<Vec<store::Backup>, String> {
+    Ok(store::list_backups(&config_path(&app)?))
+}
+
+/// The text of one backup, to show and compare.
+#[tauri::command]
+async fn read_backup(app: tauri::AppHandle, name: String) -> Result<String, String> {
+    store::read_backup(&config_path(&app)?, &name)
+}
+
+/// Make the config the same as a backup. This is a normal save: it is
+/// checked with `ssh -G`, and the current file is backed up first, so a
+/// restore can be undone from the history too.
+#[tauri::command]
+async fn restore_backup(
+    app: tauri::AppHandle,
+    revision: String,
+    name: String,
+) -> Result<SaveResult, String> {
+    let text = store::read_backup(&config_path(&app)?, &name)?;
+    edit(&app, &revision, |config| {
+        *config = SshConfig::parse(&text);
+        Ok(None)
     })
 }
 
@@ -435,7 +466,10 @@ pub fn run() {
             save_block,
             delete_block,
             set_block_enabled,
-            save_block_raw
+            save_block_raw,
+            list_backups,
+            read_backup,
+            restore_backup
         ])
         .setup(|app| {
             app.set_menu(menu_with_about(app.handle())?)?;

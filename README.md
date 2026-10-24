@@ -30,6 +30,11 @@ indentation and the order of lines stay. If `~/.ssh/config` is a symlink
 (for example, from a dotfiles manager), the app writes to the real file and
 keeps the link.
 
+The **History** button lists these backups. Choose one to see what
+restoring it would change (a line diff), then restore it. A restore is a
+normal save: it is checked with `ssh -G`, and the file before the restore
+is backed up too, so a restore can be undone.
+
 New hosts go before `Host *`, because OpenSSH uses the first value it
 finds for each keyword.
 

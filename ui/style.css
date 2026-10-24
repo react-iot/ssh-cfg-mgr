@@ -301,6 +301,22 @@ tr:hover .has-options .hover-options { display: flex; }
 .hover-options button { height: 30px; font-size: 13px; }
 .hover-options button:last-child { border-radius: 0 6px 6px 0; }
 
+/* History: backups on the left, what a restore would change on the right. */
+.history { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }
+.history-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.history-list li + li { border-top: 1px solid var(--border); }
+.history-list button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 7px 10px; border: none; border-radius: 0; background: none; text-align: left; font-size: 13px; }
+.history-list button:hover { background: var(--row-hover); }
+.history-list button.selected { background: var(--selected); color: var(--selected-text); }
+.history-list button.selected .sub { color: inherit; opacity: 0.8; }
+.history-pane { min-width: 0; }
+.history-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+pre.diff { margin: 0; padding: 8px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); font: 12.5px/1.5 var(--mono); overflow-x: auto; }
+pre.diff div { padding: 0 12px; white-space: pre; }
+pre.diff .add { background: color-mix(in srgb, #10b981 18%, transparent); }
+pre.diff .del { background: color-mix(in srgb, #ef4444 18%, transparent); }
+pre.diff .fold { color: var(--muted); font-family: var(--sans); font-size: 12px; padding: 2px 12px; }
+
 /* About dialog: centered, like the native panel, with real links. */
 dialog.about { width: min(360px, 90vw); padding: 24px 24px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); color: var(--text); text-align: center; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35); }
 dialog.about::backdrop { background: rgba(0, 0, 0, 0.35); }

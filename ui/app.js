@@ -8,6 +8,7 @@ const { invoke } = window.__TAURI__.core;
 const GLOBAL_ID = "global";
 const NEW_ID = "new";
 const SETTINGS_ID = "settings";
+const HISTORY_ID = "history";
 
 // Suggestions for the keyword field. Any keyword that OpenSSH knows works.
 const KEYWORDS = [
@@ -474,8 +475,118 @@ function renderSettings(detail) {
   );
 }
 
+// ---- History: backups made on each save ----
+
+// backups: the list (null while loading); name/text: the chosen backup.
+let historyView = { backups: null, name: null, text: null, confirming: false };
+
+async function loadHistory() {
+  try {
+    historyView.backups = await invoke("list_backups");
+    if (historyView.backups.length) await showBackup(historyView.backups[0].name);
+  } catch (error) {
+    showNotice(String(error), "error");
+    historyView.backups = [];
+  }
+  render();
+}
+
+async function showBackup(name) {
+  try {
+    historyView.text = await invoke("read_backup", { name });
+    historyView.name = name;
+    historyView.confirming = false;
+  } catch (error) {
+    showNotice(String(error), "error");
+  }
+  render();
+}
+
+async function restoreBackup(name) {
+  clearNotice();
+  try {
+    const result = await invoke("restore_backup", { revision: config.revision, name });
+    config = result.config;
+    historyView = { backups: null, name: null, text: null, confirming: false };
+    showNotice(result.backup ? `Restored. The file before the restore is in history too: ${result.backup}` : "Restored. The file was already the same.");
+    setSync("Monitoring changes", `Restored at ${now()}. Watching the file for changes.`);
+    render();
+    loadHistory();
+  } catch (error) {
+    historyView.confirming = false;
+    render();
+    showNotice(String(error), "error");
+  }
+}
+
+const CONTEXT_LINES = 3;
+
+function renderHistory(detail) {
+  const head = make("div", "detail-head");
+  head.append(make("h1", "", "History"));
+  detail.append(head);
+  detail.append(make("p", "lead", "A backup is made before every save. The newest 50 are kept. Choose one to see what restoring it would change."));
+  if (historyView.backups === null) return detail.append(make("p", "empty", "Loading…"));
+  if (!historyView.backups.length) return detail.append(make("p", "empty", "No backups yet. One is made the first time you save."));
+
+  const layout = make("div", "history");
+  const list = make("ul", "history-list");
+  for (const backup of historyView.backups) {
+    const item = button("", backup.name === historyView.name ? "selected" : "", () => showBackup(backup.name));
+    item.append(make("span", "", new Date(backup.time * 1000).toLocaleString()), make("span", "sub", `${(backup.size / 1024).toFixed(1)} KB`));
+    const li = make("li");
+    li.append(item);
+    list.append(li);
+  }
+
+  const pane = make("div", "history-pane");
+  if (historyView.text !== null) {
+    const diff = lineDiff(config.text, historyView.text);
+    const changed = diff.filter((l) => l.op !== " ").length;
+    const top = make("div", "history-head");
+    top.append(make("span", "", changed ? `Restoring changes ${plural(changed, "line")}:` : "This backup is the same as the current file."));
+    if (changed) {
+      const restore = button(historyView.confirming ? "Click again to restore" : "Restore this version", historyView.confirming ? "danger" : "primary", () => {
+        if (historyView.confirming) restoreBackup(historyView.name);
+        else {
+          historyView.confirming = true;
+          render();
+        }
+      });
+      top.append(restore);
+    }
+    pane.append(top);
+    if (changed) pane.append(diffView(diff));
+  }
+  layout.append(list, pane);
+  detail.append(layout);
+}
+
+// Changed lines with a few lines around them; long same parts are folded.
+function diffView(diff) {
+  const near = diff.map(() => false);
+  diff.forEach((l, i) => {
+    if (l.op === " ") return;
+    for (let k = Math.max(0, i - CONTEXT_LINES); k <= Math.min(diff.length - 1, i + CONTEXT_LINES); k++) near[k] = true;
+  });
+  const pre = make("pre", "diff");
+  let folded = 0;
+  const fold = () => {
+    if (folded) pre.append(make("div", "fold", `⋯ ${plural(folded, "line")} the same`));
+    folded = 0;
+  };
+  diff.forEach((l, i) => {
+    if (!near[i]) return folded++;
+    fold();
+    pre.append(make("div", { "-": "del", "+": "add", " ": "same" }[l.op], `${l.op} ${l.text}`));
+  });
+  fold();
+  return pre;
+}
+
 function renderView(detail) {
   if (selected === SETTINGS_ID) return renderSettings(detail);
+  if (selected === HISTORY_ID) return renderHistory(detail);
   const entry = entries().find((e) => e.id === selected);
   if (!entry) {
     const text = config.exists
@@ -1140,7 +1251,7 @@ function showConfig() {
   badge.textContent = config.lossless ? "Round-trip OK" : "Round-trip mismatch";
 
   const ids = entries().map((e) => e.id);
-  if (selected !== SETTINGS_ID && !ids.includes(selected)) {
+  if (selected !== SETTINGS_ID && selected !== HISTORY_ID && !ids.includes(selected)) {
     selected = ids.find((id) => id !== GLOBAL_ID) ?? ids[0] ?? null;
   }
   render();
@@ -1254,6 +1365,11 @@ el("sort").addEventListener("click", () => {
 });
 
 el("settings").addEventListener("click", () => select(SETTINGS_ID));
+el("history").addEventListener("click", () => {
+  historyView = { backups: null, name: null, text: null, confirming: false };
+  select(HISTORY_ID);
+  loadHistory();
+});
 
 // The About dialog, opened from the app menu ("show-about" from Rust).
 // Links with target="_blank" open in the browser (opener plugin).

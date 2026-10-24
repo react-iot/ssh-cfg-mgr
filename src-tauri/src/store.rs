@@ -207,24 +207,65 @@ fn backup(target: &Path, path: &Path) -> Result<PathBuf, String> {
 
 /// Delete the oldest backups. A failure here does not stop the save.
 fn prune(dir: &Path) {
+    let backups = backups_in(dir);
+    for old in backups.iter().skip(MAX_BACKUPS) {
+        let _ = fs::remove_file(dir.join(&old.name));
+    }
+}
+
+/// One backup file, for the history list.
+#[derive(serde::Serialize)]
+pub struct Backup {
+    pub name: String,
+    /// When the backup was made, in seconds since 1970.
+    pub time: u64,
+    pub size: u64,
+}
+
+/// The time in a backup name: `config-<seconds>.bak` or
+/// `config-<seconds>-<n>.bak`. The file's mtime is no use: on macOS
+/// `fs::copy` keeps the mtime of the config it copied.
+fn backup_time(name: &str) -> Option<(u64, u64)> {
+    let stem = name.strip_prefix("config-")?.strip_suffix(".bak")?;
+    let (seconds, n) = stem.split_once('-').unwrap_or((stem, "0"));
+    Some((seconds.parse().ok()?, n.parse().ok()?))
+}
+
+/// Backups in `dir`, newest first.
+fn backups_in(dir: &Path) -> Vec<Backup> {
     let Ok(entries) = fs::read_dir(dir) else {
-        return;
+        return Vec::new();
     };
-    let mut backups: Vec<(SystemTime, PathBuf)> = entries
+    let mut backups: Vec<(u64, u64, Backup)> = entries
         .filter_map(Result::ok)
-        .filter(|e| {
+        .filter_map(|e| {
             let name = e.file_name().to_string_lossy().into_owned();
-            name.starts_with("config-") && name.ends_with(".bak")
+            let (time, n) = backup_time(&name)?;
+            let size = e.metadata().ok()?.len();
+            Some((time, n, Backup { name, time, size }))
         })
-        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
         .collect();
-    if backups.len() <= MAX_BACKUPS {
-        return;
+    backups.sort_by_key(|b| std::cmp::Reverse((b.0, b.1)));
+    backups.into_iter().map(|(_, _, b)| b).collect()
+}
+
+fn backup_dir(path: &Path) -> PathBuf {
+    path.parent().unwrap_or(Path::new(".")).join(BACKUP_DIR)
+}
+
+/// The backups of the config at `path`, newest first.
+pub fn list_backups(path: &Path) -> Vec<Backup> {
+    backups_in(&backup_dir(path))
+}
+
+/// The text of one backup. `name` must be a backup file name, so this
+/// cannot read any other file.
+pub fn read_backup(path: &Path, name: &str) -> Result<String, String> {
+    if name.contains(['/', '\\']) || backup_time(name).is_none() {
+        return Err(format!("\"{name}\" is not a backup."));
     }
-    backups.sort();
-    for (_, old) in &backups[..backups.len() - MAX_BACKUPS] {
-        let _ = fs::remove_file(old);
-    }
+    let file = backup_dir(path).join(name);
+    fs::read_to_string(&file).map_err(|e| format!("Cannot read {}: {e}", file.display()))
 }
 
 #[cfg(test)]
@@ -322,6 +363,41 @@ mod tests {
         assert_eq!(fs::read_to_string(&real).unwrap(), "Host new\n");
         assert_eq!(backups(&dir).len(), 1, "backup goes next to the link");
         assert!(!dotfiles.join(BACKUP_DIR).exists());
+    }
+
+    #[test]
+    fn backups_are_listed_newest_first_by_name_time() {
+        let dir = temp_dir("history");
+        let path = dir.join("config");
+        let backups = dir.join(BACKUP_DIR);
+        fs::create_dir(&backups).unwrap();
+        for name in [
+            "config-100.bak",
+            "config-300.bak",
+            "config-300-1.bak",
+            "config-200.bak",
+            "notes.txt",
+        ] {
+            fs::write(backups.join(name), name).unwrap();
+        }
+        let names: Vec<String> = list_backups(&path).into_iter().map(|b| b.name).collect();
+        assert_eq!(
+            names,
+            [
+                "config-300-1.bak",
+                "config-300.bak",
+                "config-200.bak",
+                "config-100.bak"
+            ]
+        );
+
+        assert_eq!(
+            read_backup(&path, "config-200.bak").unwrap(),
+            "config-200.bak"
+        );
+        assert!(read_backup(&path, "../config").is_err());
+        assert!(read_backup(&path, "notes.txt").is_err());
+        assert!(read_backup(&path, "config-1.bak/../../x").is_err());
     }
 
     #[test]
