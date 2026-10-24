@@ -60,8 +60,25 @@ const VALUE_TYPES = {
 // (or Escape) runs onCancel. Returns the line; .input is the field.
 function valueEditor(keyword, current, onDone, onCancel) {
   const type = VALUE_TYPES[keyword.toLowerCase()] ?? {};
+  const yesNo = type.choices === YES_NO && (!current || YES_NO.includes(current));
   let input;
-  if (type.choices) {
+  let focusTarget;
+  if (yesNo) {
+    // Two joined buttons. input.value holds the choice, like a field.
+    input = make("div", "toggle");
+    input.setAttribute("role", "radiogroup");
+    input.value = current;
+    for (const choice of YES_NO) {
+      const option = button(choice, "", () => {
+        input.value = choice;
+        for (const b of input.children) b.setAttribute("aria-checked", String(b === option));
+      });
+      option.setAttribute("role", "radio");
+      option.setAttribute("aria-checked", String(choice === current));
+      input.append(option);
+    }
+    focusTarget = [...input.children].find((b) => b.getAttribute("aria-checked") === "true") ?? input.firstChild;
+  } else if (type.choices) {
     input = make("select");
     // Keep a value that is in the file but not in the list.
     const choices = type.choices.includes(current) || !current ? type.choices : [current, ...type.choices];
@@ -92,7 +109,8 @@ function valueEditor(keyword, current, onDone, onCancel) {
   input.setAttribute("aria-label", `Value for ${keyword || "new keyword"}`);
 
   const done = () => {
-    if (input.reportValidity() && input.value.trim()) onDone(input.value.trim());
+    if (input.reportValidity && !input.reportValidity()) return;
+    if (input.value.trim()) onDone(input.value.trim());
   };
   input.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
@@ -104,12 +122,15 @@ function valueEditor(keyword, current, onDone, onCancel) {
     }
   });
 
+  // Tick and cross as one joined control.
   const tick = iconButton(TICK, `Save ${keyword}`, done);
   tick.classList.add("primary");
   const cross = iconButton(CROSS, "Cancel", onCancel);
+  const pair = make("div", "segmented confirm");
+  pair.append(tick, cross);
   const line = make("div", "value-line");
-  line.append(input, tick, cross);
-  line.input = input;
+  line.append(input, pair);
+  line.input = focusTarget ?? input;
   return line;
 }
 
@@ -197,6 +218,7 @@ function entries() {
       name: block.pattern,
       settings: block.settings,
       enabled: block.enabled,
+      raw: block.raw,
       ...groupOf(block),
     });
   });
@@ -403,7 +425,7 @@ function renderView(detail) {
       );
     } else {
       // Values are edited in the table; this opens the whole block as a form.
-      actions.append(button("Edit Raw", "", () => startEdit(entry)));
+      actions.append(button("Edit Raw", "", () => startRaw(entry)));
       // Only a Host can be copied: a new block is always a Host.
       if (entry.kind === "Host") {
         actions.append(button("Duplicate", "", () => startEdit({ ...entry, id: null, name: `${entry.name}-copy`, enabled: true })));
@@ -585,6 +607,48 @@ function startEdit(entry, newGroup = false) {
   if (first) first.focus();
 }
 
+// Edit the block's lines as plain text.
+function startRaw(entry) {
+  clearNotice();
+  confirmingDelete = false;
+  editing = { raw: true, index: Number(entry.id), kind: entry.kind, name: entry.name, text: entry.raw };
+  render();
+  el("detail").querySelector("textarea").focus();
+}
+
+function renderRaw(detail) {
+  const form = make("form", "edit-form");
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    save();
+  });
+  form.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") cancelEdit();
+    // Cmd+Enter or Ctrl+Enter saves; Enter alone is a new line.
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      save();
+    }
+  });
+  form.append(make("h1", "", `Edit ${editing.kind} ${editing.name}`));
+  form.append(make("p", "hint", "The block's lines as they are in the file. Blank lines and comments after the block are not shown, and stay as they are."));
+  const text = make("textarea", "raw");
+  text.value = editing.text;
+  text.spellcheck = false;
+  text.setAttribute("aria-label", "Block text");
+  text.rows = Math.min(30, Math.max(6, editing.text.split("\n").length + 1));
+  text.addEventListener("input", () => (editing.text = text.value));
+  form.append(text);
+
+  const actions = make("div", "form-actions");
+  const saveButton = make("button", "primary", "Save");
+  saveButton.type = "submit";
+  actions.append(saveButton, button("Cancel", "", cancelEdit));
+  actions.append(make("span", "hint", "⌘↩ saves. OpenSSH checks the whole file before it is saved. A backup of the old file is kept."));
+  form.append(actions);
+  detail.append(form);
+}
+
 function cancelEdit() {
   editing = null;
   if (selected === NEW_ID) selected = null;
@@ -705,19 +769,22 @@ function applyResult(result, message) {
   selected = result.selected === null ? null : String(result.selected);
   render();
   showNotice(result.backup ? `${message} Backup: ${result.backup}` : message);
+  setSync(`Saved at ${now()} · watching for changes`);
 }
 
 async function save() {
   clearNotice();
   try {
-    const result = await invoke("save_block", {
-      revision: config.revision,
-      index: editing.index,
-      pattern: editing.pattern,
-      settings: editing.settings,
-      group: editing.group,
-      groupMode: editing.groupMode,
-    });
+    const result = editing.raw
+      ? await invoke("save_block_raw", { revision: config.revision, index: editing.index, text: editing.text })
+      : await invoke("save_block", {
+          revision: config.revision,
+          index: editing.index,
+          pattern: editing.pattern,
+          settings: editing.settings,
+          group: editing.group,
+          groupMode: editing.groupMode,
+        });
     applyResult(result, "Saved.");
   } catch (error) {
     // Keep the form open, so the user can fix the problem.
@@ -760,7 +827,8 @@ function render() {
   el("groups").replaceChildren(...names.map((name) => Object.assign(make("option"), { value: name })));
   const detail = el("detail");
   detail.replaceChildren();
-  if (editing) renderEdit(detail);
+  if (editing?.raw) renderRaw(detail);
+  else if (editing) renderEdit(detail);
   else renderView(detail);
 }
 
@@ -781,12 +849,14 @@ async function load() {
     config = await invoke("load_config");
   } catch (error) {
     showNotice(String(error), "error");
+    setSync("Cannot read the file", "error");
     return;
   }
 
   editing = null;
   confirmingDelete = false;
   showConfig();
+  setSync(`Loaded at ${now()} · watching for changes`);
 }
 
 function showConfig() {
@@ -817,9 +887,14 @@ async function checkForChanges() {
   try {
     const fresh = await invoke("load_config");
     // A save finished while we read: its result is newer than ours.
-    if (config !== before || fresh.revision === config.revision) return;
+    if (config !== before) return;
+    if (fresh.revision === config.revision) {
+      setSync(`Watching for changes · checked ${now()}`);
+      return;
+    }
     if (editing) {
       // Keep the form. A save now would fail, so say so once.
+      setSync(`Changed on disk at ${now()} · not reloaded while you edit`, "changed");
       if (warnedRevision !== fresh.revision) {
         warnedRevision = fresh.revision;
         showNotice("The file changed on disk. Your changes cannot be saved. Copy what you need, click Cancel, and edit again.", "error");
@@ -835,12 +910,23 @@ async function checkForChanges() {
     // Row numbers may have moved; close the value editor.
     inlineRow = null;
     showConfig();
+    setSync(`Reloaded at ${now()} · changed on disk`, "changed");
     showNotice("The file changed on disk. The list was reloaded.");
   } catch {
     // The next check tries again. Reload shows the error.
+    setSync(`Cannot read the file · retrying`, "error");
   } finally {
     checking = false;
   }
+}
+
+const now = () => new Date().toLocaleTimeString();
+
+// The file-watch state, in the status bar.
+function setSync(text, kind = "") {
+  const sync = el("sync");
+  sync.textContent = text;
+  sync.className = `sync ${kind}`;
 }
 
 setInterval(checkForChanges, WATCH_MS);

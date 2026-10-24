@@ -83,6 +83,13 @@ body {
 .path { color: var(--muted); font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spacer { flex: 1; }
 
+.statusbar { display: flex; align-items: center; gap: 10px; padding: 4px 16px; border-top: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 12px; min-width: 0; }
+.statusbar .badge { padding: 0 8px; font-size: 11px; }
+.sync { white-space: nowrap; }
+.sync::before { content: "●"; margin-right: 6px; color: var(--success, #10b981); }
+.sync.changed::before { color: var(--accent); }
+.sync.error::before { color: var(--warn); }
+
 .badge {
   flex: none;
   white-space: nowrap;
@@ -245,6 +252,19 @@ td:has(.value-button, .value-editor) { padding: 3px 6px; }
 .value-line { display: flex; align-items: center; gap: 6px; }
 .value-line button { flex: none; height: 28px; }
 .value-line button.primary { color: var(--on-accent); }
+.segmented.confirm { flex: none; }
+
+/* yes / no as two joined buttons; the chosen one is filled. */
+.toggle { display: flex; flex: none; }
+.toggle button { min-width: 52px; border-radius: 0; font-family: var(--sans); }
+.toggle button + button { margin-left: -1px; }
+.toggle button:first-child { border-radius: 6px 0 0 6px; }
+.toggle button:last-child { border-radius: 0 6px 6px 0; }
+.toggle button[aria-checked="true"] { position: relative; background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
+.toggle + .confirm { margin-left: auto; }
+
+textarea.raw { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); font: 13px/1.5 var(--mono); tab-size: 4; resize: vertical; }
+textarea.raw:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .add-row select { width: 100%; padding: 4px 6px; font-family: var(--sans); }
 .detail-head h1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .kind-label { flex: none; }

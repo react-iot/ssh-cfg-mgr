@@ -17,8 +17,6 @@
         <span class="brand-sep" aria-hidden="true"></span>
         <span>SSH Config Manager</span>
       </div>
-      <code id="path" class="path"></code>
-      <span id="badge" class="badge" hidden></span>
       <span class="spacer"></span>
       <button id="new-host" type="button" class="primary with-icon">
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M8 2.5v11M2.5 8h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
@@ -60,6 +58,13 @@
         <div id="detail" aria-live="polite"></div>
       </section>
     </main>
+
+    <footer class="statusbar">
+      <code id="path" class="path"></code>
+      <span id="badge" class="badge" hidden></span>
+      <span class="spacer"></span>
+      <span id="sync" class="sync" role="status"></span>
+    </footer>
 
     <datalist id="keywords"></datalist>
     <datalist id="groups"></datalist>

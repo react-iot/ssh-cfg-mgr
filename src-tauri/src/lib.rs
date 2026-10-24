@@ -44,6 +44,8 @@ struct BlockView {
     group_comment: Option<String>,
     /// False if the block is turned off (its lines start with `#~`).
     enabled: bool,
+    /// The block's lines as written, for the raw editor.
+    raw: String,
 }
 
 impl BlockView {
@@ -59,6 +61,7 @@ impl BlockView {
                 .find_map(group_from_comment)
                 .map(str::to_string),
             enabled: block.is_enabled(),
+            raw: config.block_text(index).unwrap_or_default(),
         }
     }
 }
@@ -219,6 +222,24 @@ async fn delete_block(
     })
 }
 
+/// Replace the lines of the block at `index` with `text`, as typed. The
+/// save checks the whole file with `ssh -G`, as every save does.
+#[tauri::command]
+async fn save_block_raw(
+    app: tauri::AppHandle,
+    revision: String,
+    index: usize,
+    text: String,
+) -> Result<SaveResult, String> {
+    edit(&app, &revision, |config| {
+        if index >= config.blocks().len() {
+            return Err(CHANGED_ON_DISK.to_string());
+        }
+        config.set_block_text(index, &text)?;
+        Ok(Some(index))
+    })
+}
+
 /// Turn the block at `index` on or off. Off comments it out with `#~`, so
 /// OpenSSH ignores it; on restores it.
 #[tauri::command]
@@ -373,7 +394,8 @@ pub fn run() {
             load_config,
             save_block,
             delete_block,
-            set_block_enabled
+            set_block_enabled,
+            save_block_raw
         ])
         .run(tauri::generate_context!())
         .expect("error while running SSH Cfg Mgr");
@@ -460,6 +482,31 @@ mod tests {
 
         apply_block(&mut config, 0, "a", settings(), None, GroupMode::Tag);
         assert_eq!(config.to_string(), "Host a\n    User x\n");
+    }
+
+    #[test]
+    fn raw_edit_is_checked_by_ssh() {
+        let dir = std::env::temp_dir().join(format!("ssh-cfg-mgr-raw-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config");
+        let text = "Host a\n    User x\n";
+        std::fs::write(&path, text).unwrap();
+
+        let mut config = SshConfig::parse(text);
+        config
+            .set_block_text(0, "Host a\n    HostNme typo\n")
+            .unwrap();
+        let error = store::write(&path, &config.to_string()).unwrap_err();
+        assert!(error.contains("Bad configuration option"), "{error}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
+
+        config.set_block_text(0, "Host a\n    User y\n").unwrap();
+        store::write(&path, &config.to_string()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "Host a\n    User y\n"
+        );
     }
 
     #[test]

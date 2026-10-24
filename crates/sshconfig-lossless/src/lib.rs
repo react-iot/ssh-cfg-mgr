@@ -250,6 +250,16 @@ impl Block {
     fn last_line_mut(&mut self) -> &mut Line {
         self.body.last_mut().unwrap_or(&mut self.header)
     }
+
+    /// How many body lines belong to the block itself: up to its last
+    /// directive. Blank lines and comments after that separate it from, or
+    /// describe, the next block.
+    fn own_len(&self) -> usize {
+        self.body
+            .iter()
+            .rposition(|line| line.directive().is_some())
+            .map_or(0, |i| i + 1)
+    }
 }
 
 impl fmt::Display for Block {
@@ -473,6 +483,56 @@ impl SshConfig {
             (None, None) => {}
         }
         true
+    }
+
+    /// The text of the block at `index`, as written: its header and its
+    /// lines up to the last directive. The blank lines and comments after
+    /// that are not part of it (see [`SshConfig::set_block_text`]).
+    pub fn block_text(&self, index: usize) -> Option<String> {
+        let block = self.blocks.get(index)?;
+        let own = &block.body[..block.own_len()];
+        Some(
+            std::iter::once(&block.header)
+                .chain(own)
+                .map(Line::to_string)
+                .collect(),
+        )
+    }
+
+    /// Replace the lines of the block at `index` (see
+    /// [`SshConfig::block_text`]) with `text`. `text` must be exactly one
+    /// `Host` or `Match` block. Its line endings change to the file's. The
+    /// blank lines and comments after the block, and every other line in the
+    /// file, stay as they are.
+    pub fn set_block_text(&mut self, index: usize, text: &str) -> Result<(), String> {
+        if index >= self.blocks.len() {
+            return Err(format!("There is no block {index}."));
+        }
+        let parsed = SshConfig::parse(text);
+        if parsed.global.iter().any(|line| !line.is_blank()) {
+            return Err("The text must start with a Host or Match line.".into());
+        }
+        let [mut new] = <[Block; 1]>::try_from(parsed.blocks)
+            .map_err(|_| "The text must have exactly one Host or Match block.".to_string())?;
+        // Spacing after the block stays as it is in the file.
+        while new.body.last().is_some_and(Line::is_blank) {
+            new.body.pop();
+        }
+
+        let eol = self.eol_style();
+        let old = &mut self.blocks[index];
+        let after = old.body.split_off(old.own_len());
+        // Only the last line of a file may have no newline. Keep it that way.
+        let ends_file = after.is_empty() && old.last_line_mut().eol.is_empty();
+        for line in std::iter::once(&mut new.header).chain(&mut new.body) {
+            line.eol.clone_from(&eol);
+        }
+        if ends_file {
+            new.last_line_mut().eol.clear();
+        }
+        new.body.extend(after);
+        *old = new;
+        Ok(())
     }
 
     /// The line ending this file uses: `\r\n` or `\n`.

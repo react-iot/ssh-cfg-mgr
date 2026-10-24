@@ -261,3 +261,66 @@ fn off_line_in_an_enabled_block_is_not_a_setting() {
     let global = SshConfig::parse("#~User x\nHost a\n");
     assert_eq!(global.global_directives().count(), 0);
 }
+
+#[test]
+fn block_text_is_the_block_without_what_follows() {
+    let config = parse();
+    assert_eq!(
+        config.block_text(0).unwrap(),
+        "Host gw\n    User root\n    IdentityFile ~/.ssh/a\n    IdentityFile ~/.ssh/b\n"
+    );
+    assert_eq!(
+        config.block_text(1).unwrap(),
+        "Host edge\n    HostName 10.0.0.5\n"
+    );
+    assert!(config.block_text(9).is_none());
+}
+
+#[test]
+fn set_block_text_replaces_only_the_block() {
+    let mut config = parse();
+    let same = config.block_text(1).unwrap();
+    config.set_block_text(1, &same).unwrap();
+    assert_eq!(config.to_string(), SAMPLE);
+
+    // Trailing blank lines in the text are dropped; the file's spacing and
+    // the comment above the next block stay.
+    config
+        .set_block_text(
+            1,
+            "Host edge edge.local\n  HostName 10.0.0.6\n  Port 2222\n\n\n",
+        )
+        .unwrap();
+    assert_eq!(
+        config.to_string(),
+        SAMPLE.replace(
+            "Host edge\n    HostName 10.0.0.5\n",
+            "Host edge edge.local\n  HostName 10.0.0.6\n  Port 2222\n"
+        )
+    );
+}
+
+#[test]
+fn set_block_text_rules() {
+    let mut config = parse();
+    assert!(config.set_block_text(0, "User x\nHost a\n").is_err());
+    assert!(config.set_block_text(0, "# note\nHost a\n").is_err());
+    assert!(config.set_block_text(0, "Host a\nHost b\n").is_err());
+    assert!(config.set_block_text(0, "").is_err());
+    assert!(config.set_block_text(9, "Host a\n").is_err());
+    assert_eq!(
+        config.to_string(),
+        SAMPLE,
+        "a rejected text changes nothing"
+    );
+}
+
+#[test]
+fn set_block_text_keeps_crlf_and_missing_final_newline() {
+    let mut config = SshConfig::parse("Host a\r\n    User x\r\nHost b\r\n    User y");
+    config.set_block_text(1, "Host b\n    User z\n").unwrap();
+    assert_eq!(
+        config.to_string(),
+        "Host a\r\n    User x\r\nHost b\r\n    User z"
+    );
+}
