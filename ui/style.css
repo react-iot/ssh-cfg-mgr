@@ -14,6 +14,11 @@
   --row-hover: color-mix(in srgb, CanvasText 8%, Canvas);
   --selected: Highlight;
   --selected-text: HighlightText;
+  /* The user's system accent where the engine gives it (see the @supports
+     rules below); else the brand blue. Group headers mix it 80% with the
+     text color: 5.8:1 (light) and 5.5:1 (dark), above AA for small text. */
+  --system-accent: #2979ff;
+  --accent-text: color-mix(in srgb, var(--system-accent) 80%, CanvasText);
   --accent: #2979ff;      /* React IoT Blue: focus, borders */
   --accent-fill: #1f63d6; /* brand-hover: white on #2979ff is 3.98:1, below AA */
   --accent-ink: #174fb0;  /* brand-press: accent text on soft fill, 6.95:1 */
@@ -24,6 +29,12 @@
   --on-accent: #ffffff;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Standard CSS system accent, for engines that support it (e.g. WebKitGTK
+   if it does). macOS uses its own accent below, which wins. */
+@supports (color: AccentColor) {
+  :root { --system-accent: AccentColor; }
 }
 
 /* macOS WebKit has the AppKit semantic colors (labelColor, separatorColor,
@@ -39,6 +50,7 @@
     --row-hover: -apple-system-unemphasized-selected-content-background;
     --selected: -apple-system-selected-content-background;
     --selected-text: -apple-system-alternate-selected-text;
+    --system-accent: -apple-system-control-accent;
   }
 }
 
@@ -192,7 +204,7 @@ input.mono { font-family: var(--mono); font-size: 13px; }
 /* :where() keeps this weaker than hover and selection ("of S" adds specificity). */
 .list li:where(:nth-child(even of [role="option"])) { background: var(--row-alt); }
 .list li:hover { background: var(--row-hover); }
-.list li.group-head { display: block; padding: 10px 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); cursor: default; }
+.list li.group-head { display: block; padding: 10px 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-text); cursor: default; }
 .list li.group-head:hover { background: none; }
 /* The header is a button that opens and closes the group. */
 .group-toggle { display: flex; align-items: center; gap: 6px; width: 100%; padding: 0; border: none; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
