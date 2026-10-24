@@ -1,11 +1,11 @@
 # Build the app for macOS (universal) and Linux (AppImage, .deb, .rpm).
 #
+# Every run builds and keeps the files as workflow artifacts:
 # - Push a tag vX.Y.Z (equal to "version" in src-tauri/tauri.conf.json):
-#   builds every platform and creates a DRAFT GitHub release with the files.
+#   the release job then creates a DRAFT GitHub release with the files.
 #   Review it, then publish it by hand.
-# - Run it by hand (Actions > Release > Run workflow): builds only, and keeps
-#   the files as workflow artifacts. Use this to test a branch.
-# - A pull request that changes this file: builds only, as a manual run.
+# - Run it by hand (Actions > Release > Run workflow), or a pull request that
+#   changes this file: build only. Use this to test a branch.
 #
 # macOS signing and notarization use repository secrets; see docs/RELEASING.md.
 # Without them the macOS build is not signed.
@@ -20,8 +20,6 @@ on:
 
 jobs:
   build:
-    permissions:
-      contents: write # create the draft release and upload files
     strategy:
       fail-fast: false
       matrix:
@@ -105,32 +103,38 @@ jobs:
             echo "::warning::macOS build is NOT notarized: no API key or Apple ID secrets."
           fi
 
-      - name: Build and draft the release (tag)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: SSH Config Manager ${{ github.ref_name }}
-          releaseBody: |
-            Downloads for macOS (universal: Apple silicon and Intel) and Linux (AppImage, .deb, .rpm).
-            See the README for what is new and how to install.
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
-
       # The tauri-action README: "If you only want to build the app without
       # having the action upload any assets ... simply omit tagName,
-      # releaseName and releaseId."
-      - name: Build only (manual run)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      # releaseName and releaseId." The release job uploads instead, after
+      # the .dmg is notarized.
+      - name: Build
         uses: tauri-apps/tauri-action@v1
         with:
           args: ${{ matrix.args }}
 
-      - name: Keep the files (manual run)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      # Tauri notarizes and staples the .app, but only signs the .dmg
+      # (tauri-bundler src/bundle/macos/dmg/mod.rs). Notarize and staple the
+      # .dmg too, so Gatekeeper accepts the downloaded file itself.
+      - name: Notarize and staple the .dmg
+        if: runner.os == 'macOS'
+        run: |
+          if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            echo "::warning::.dmg is NOT notarized: it is not signed."; exit 0
+          fi
+          if [ -n "${APPLE_API_KEY_PATH:-}" ]; then
+            auth=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER")
+          elif [ -n "${APPLE_ID:-}" ]; then
+            auth=(--apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID")
+          else
+            echo "::warning::.dmg is NOT notarized: no API key or Apple ID secrets."; exit 0
+          fi
+          for dmg in target/*/release/bundle/dmg/*.dmg; do
+            xcrun notarytool submit "$dmg" "${auth[@]}" --wait
+            # Fails if Apple did not accept the file.
+            xcrun stapler staple "$dmg"
+          done
+
+      - name: Keep the files
         uses: actions/upload-artifact@v4
         with:
           name: bundles-${{ matrix.platform }}
@@ -143,3 +147,25 @@ jobs:
             target/release/bundle/deb/*.deb
             target/release/bundle/rpm/*.rpm
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    permissions:
+      contents: write # create the draft release and upload files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          find dist -type f -print0 | xargs -0 gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+            --title "SSH Config Manager $GITHUB_REF_NAME" \
+            --notes "Downloads for macOS (universal: Apple silicon and Intel) and Linux (AppImage, .deb, .rpm).
+          See the README for what is new and how to install."

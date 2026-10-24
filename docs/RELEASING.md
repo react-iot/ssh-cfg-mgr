@@ -93,6 +93,10 @@ off only its own step (signing or notarization), with a warning.
 Run the workflow by hand, download `bundles-macos-latest`, open the `.dmg`, then:
 
 ```sh
+spctl -a -vv -t install SSH*.dmg        # "source=Notarized Developer ID"
 codesign -dv --verbose=2 "SSH Config Manager.app"
 spctl -a -vv "SSH Config Manager.app"   # "source=Notarized Developer ID"
 ```
+
+Tauri notarizes the `.app`. The workflow then notarizes and staples the
+`.dmg` as well, before the release job uploads it.
