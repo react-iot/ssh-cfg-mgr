@@ -1,0 +1,15 @@
+[package]
+name = "ssh-cfg-mgr"
+version = "0.1.0"
+description = "Desktop app to manage ~/.ssh/config and SSH keys"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+sshconfig-lossless = { path = "../crates/sshconfig-lossless" }
