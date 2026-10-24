@@ -212,6 +212,9 @@ input.mono { font-family: var(--mono); font-size: 13px; }
 .group-toggle .chevron { flex: none; transition: transform 0.15s ease; }
 .group-toggle[aria-expanded="true"] .chevron { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .group-toggle .chevron { transition: none; } }
+.list li.group-head:has(.group-remove) { display: flex; align-items: center; gap: 6px; }
+.group-remove { height: 22px; padding: 0 4px; }
+.group-remove:hover { color: var(--danger); }
 .group-count { margin-left: auto; font-weight: 500; letter-spacing: 0; }
 /* Space and a line between groups, so each reads as its own section. */
 .list li.group-head:not(:first-child) { margin-top: 12px; border-top: 1px solid var(--border); border-radius: 0; }
@@ -250,8 +253,18 @@ button.visibility:focus-visible { opacity: 1; }
 button.icon-only { display: grid; place-items: center; padding: 0 8px; height: 30px; color: var(--muted); }
 button.with-icon { display: flex; align-items: center; gap: 6px; height: 30px; }
 
-.options { max-width: 760px; margin: 16px 0; padding: 0; border: none; display: flex; flex-direction: column; gap: 10px; }
+.options { max-width: 760px; margin: 0 0 8px; padding: 0; border: none; display: flex; flex-direction: column; gap: 10px; }
 .options legend { margin-bottom: 8px; font-weight: 600; color: var(--heading); }
+
+/* Settings: one card per section. */
+.settings-section { max-width: 760px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+.settings-section h2 { margin: 0 0 10px; font-size: 14px; color: var(--heading); }
+.settings-section p { margin: 0 0 8px; }
+.settings-section .form-actions { margin-top: 10px; }
+.path-line { display: block; padding: 6px 10px; border-radius: 6px; background: var(--row-alt); font: 12px var(--mono); overflow-wrap: anywhere; }
+.theme-toggle { margin-bottom: 8px; }
+.theme-toggle button { min-width: 72px; height: 30px; }
+.theme-toggle button:last-child { border-radius: 0 6px 6px 0; }
 .option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); cursor: pointer; }
 .option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .option input { margin-top: 3px; accent-color: var(--accent); }

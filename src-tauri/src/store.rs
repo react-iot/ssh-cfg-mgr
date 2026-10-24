@@ -258,6 +258,19 @@ pub fn list_backups(path: &Path) -> Vec<Backup> {
     backups_in(&backup_dir(path))
 }
 
+/// Delete every backup of the config at `path`. Only backup files are
+/// deleted; the config itself is not touched. Returns how many.
+pub fn clear_backups(path: &Path) -> Result<usize, String> {
+    let dir = backup_dir(path);
+    let mut deleted = 0;
+    for backup in backups_in(&dir) {
+        let file = dir.join(&backup.name);
+        fs::remove_file(&file).map_err(|e| format!("Cannot delete {}: {e}", file.display()))?;
+        deleted += 1;
+    }
+    Ok(deleted)
+}
+
 /// The text of one backup. `name` must be a backup file name, so this
 /// cannot read any other file.
 pub fn read_backup(path: &Path, name: &str) -> Result<String, String> {
@@ -398,6 +411,22 @@ mod tests {
         assert!(read_backup(&path, "../config").is_err());
         assert!(read_backup(&path, "notes.txt").is_err());
         assert!(read_backup(&path, "config-1.bak/../../x").is_err());
+    }
+
+    #[test]
+    fn clear_backups_deletes_only_backups() {
+        let dir = temp_dir("clear");
+        let path = dir.join("config");
+        fs::write(&path, "Host a\n").unwrap();
+        let backups = dir.join(BACKUP_DIR);
+        fs::create_dir(&backups).unwrap();
+        for name in ["config-1.bak", "config-2-1.bak", "notes.txt"] {
+            fs::write(backups.join(name), "x").unwrap();
+        }
+        assert_eq!(clear_backups(&path).unwrap(), 2);
+        assert!(list_backups(&path).is_empty());
+        assert!(backups.join("notes.txt").exists());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "Host a\n");
     }
 
     #[test]

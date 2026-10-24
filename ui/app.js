@@ -184,11 +184,13 @@ let inlineValue = null;
 // fail (private mode, cleared data); the defaults work without it.
 // newGroupMode: how a group is saved on a block that has none yet.
 // collapsed: names of closed groups in the list ("" is No group).
-const prefs = { newGroupMode: "comment", sort: "file", collapsed: [] };
+// theme: "system", "light" or "dark".
+const prefs = { newGroupMode: "comment", sort: "file", collapsed: [], theme: "system" };
 try {
   Object.assign(prefs, JSON.parse(localStorage.getItem("prefs") || "{}"));
 } catch {}
 if (!Array.isArray(prefs.collapsed)) prefs.collapsed = [];
+if (!["system", "light", "dark"].includes(prefs.theme)) prefs.theme = "system";
 
 function savePrefs() {
   try {
@@ -328,6 +330,16 @@ function renderList() {
       toggle.setAttribute("aria-expanded", String(!closed));
       toggle.append(chevron(), make("span", "", group || "No group"), make("span", "group-count", String(members.length)));
       head.append(toggle);
+      // An empty group exists only here (the file has no hosts in it), so
+      // removing it changes nothing on disk.
+      if (!members.length && newGroups.includes(group)) {
+        const remove = iconButton(TRASH, `Delete the empty group ${group}`, () => {
+          setNewGroups(newGroups.filter((g) => g !== group));
+          renderList();
+        });
+        remove.classList.add("group-remove");
+        head.append(remove);
+      }
       dropTarget(head, group);
       list.append(head);
       if (closed) continue;
@@ -391,7 +403,14 @@ function chevron() {
 
 // Groups made with "New group" that have no hosts yet, and whether the
 // name field for a new group is open.
-let newGroups = [];
+// Kept in local storage, so they survive a restart; the file cannot hold a
+// group without hosts.
+let newGroups = Array.isArray(prefs.emptyGroups) ? prefs.emptyGroups : [];
+function setNewGroups(list) {
+  newGroups = list;
+  prefs.emptyGroups = list;
+  savePrefs();
+}
 let namingGroup = false;
 
 // The name field at the top of the list for "New group".
@@ -404,7 +423,7 @@ function groupNameRow() {
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       const name = input.value.trim();
-      if (name && !newGroups.includes(name)) newGroups.push(name);
+      if (name && !newGroups.includes(name)) setNewGroups([...newGroups, name]);
       namingGroup = false;
       renderList();
     } else if (event.key === "Escape") {
@@ -524,6 +543,27 @@ function visibilityButton(entry) {
 
 function renderSettings(detail) {
   detail.append(make("h1", "", "Settings"));
+
+  // Appearance: follow the system, or force light or dark.
+  const appearance = section(detail, "Appearance");
+  const themes = make("div", "toggle theme-toggle");
+  themes.setAttribute("role", "radiogroup");
+  themes.setAttribute("aria-label", "Theme");
+  for (const [value, label] of [["system", "System"], ["light", "Light"], ["dark", "Dark"]]) {
+    const option = button(label, "", () => {
+      prefs.theme = value;
+      savePrefs();
+      applyTheme();
+      render();
+    });
+    option.setAttribute("role", "radio");
+    option.setAttribute("aria-checked", String(prefs.theme === value));
+    themes.append(option);
+  }
+  appearance.append(themes, make("p", "hint", "System follows the light or dark setting of your computer."));
+
+  // Groups: how a new group is written.
+  const groups = section(detail, "Groups");
   const field = make("fieldset", "options");
   field.append(make("legend", "", "Save a new group as"));
   const choices = [
@@ -545,10 +585,60 @@ function renderSettings(detail) {
     option.append(radio, text);
     field.append(option);
   }
-  detail.append(field);
-  detail.append(
-    make("p", "hint", "A block that already has a group keeps the way its group is stored. These settings are kept on this computer, not in the config."),
-  );
+  groups.append(field, make("p", "hint", "A block that already has a group keeps the way its group is stored."));
+
+  // History: where backups are, and clearing them.
+  const history = section(detail, "History");
+  const count = historyView.backups === null ? "…" : plural(historyView.backups.length, "backup");
+  const folder = config.path.replace(/[^/]*$/, BACKUP_DIR);
+  history.append(make("p", "", `${count}. A backup is made before every save; the newest 50 are kept.`));
+  history.append(make("code", "path-line", folder));
+  const actions = make("div", "form-actions");
+  actions.append(button("Open History", "", () => select(HISTORY_ID)), clearHistoryButton());
+  history.append(actions);
+
+  detail.append(make("p", "hint", "Settings are kept on this computer, not in the config."));
+}
+
+const BACKUP_DIR = "ssh-cfg-mgr-backups";
+
+// A titled settings section; returns its body.
+function section(detail, title) {
+  const box = make("section", "settings-section");
+  box.append(make("h2", "", title));
+  detail.append(box);
+  return box;
+}
+
+// Two clicks: the first asks, the second deletes every backup.
+let confirmingClear = false;
+function clearHistoryButton() {
+  const none = !historyView.backups?.length;
+  const node = button(confirmingClear ? "Click again to delete all backups" : "Clear history", confirmingClear ? "danger" : "", async () => {
+    if (!confirmingClear) {
+      confirmingClear = true;
+      return render();
+    }
+    confirmingClear = false;
+    try {
+      const deleted = await invoke("clear_backups");
+      showNotice(`Deleted ${plural(deleted, "backup")}. The config was not changed.`);
+    } catch (error) {
+      showNotice(String(error), "error");
+    }
+    historyView = { backups: null, name: null, text: null, confirming: false };
+    render();
+    loadHistory();
+  });
+  node.disabled = none;
+  return node;
+}
+
+// The window theme decides prefers-color-scheme and the system colors, so
+// one call themes everything. null follows the system.
+function applyTheme() {
+  const theme = prefs.theme === "system" ? null : prefs.theme;
+  window.__TAURI__.window?.getCurrentWindow().setTheme(theme).catch((error) => showNotice(String(error), "error"));
 }
 
 // ---- History: backups made on each save ----
@@ -599,7 +689,9 @@ const CONTEXT_LINES = 3;
 
 function renderHistory(detail) {
   const head = make("div", "detail-head");
-  head.append(make("h1", "", "History"));
+  const actions = make("div", "actions");
+  actions.append(clearHistoryButton());
+  head.append(make("h1", "", "History"), actions);
   detail.append(head);
   detail.append(make("p", "lead", "A backup is made before every save. The newest 50 are kept. Choose one to see what restoring it would change."));
   if (historyView.backups === null) return detail.append(make("p", "empty", "Loading…"));
@@ -896,7 +988,7 @@ async function saveSettings(entry, settings, pattern = entry.name, newGroup = un
     deleteRow = null;
     inlineValue = null;
     // A new group that now has a host is in the file.
-    newGroups = newGroups.filter((g) => !result.config.blocks.some((b) => groupOf(b).group === g));
+    setNewGroups(newGroups.filter((g) => !result.config.blocks.some((b) => groupOf(b).group === g)));
     applyResult(result, "Saved.");
   } catch (error) {
     showNotice(String(error), "error");
@@ -1444,9 +1536,15 @@ el("sort").addEventListener("click", () => {
   changed();
 });
 
-el("settings").addEventListener("click", () => select(SETTINGS_ID));
+el("settings").addEventListener("click", () => {
+  confirmingClear = false;
+  select(SETTINGS_ID);
+  loadHistory();
+});
+applyTheme();
 el("history").addEventListener("click", () => {
   historyView = { backups: null, name: null, text: null, confirming: false };
+  confirmingClear = false;
   select(HISTORY_ID);
   loadHistory();
 });

@@ -271,6 +271,12 @@ async fn list_backups(app: tauri::AppHandle) -> Result<Vec<store::Backup>, Strin
     Ok(store::list_backups(&config_path(&app)?))
 }
 
+/// Delete all backups. The config itself is not changed.
+#[tauri::command]
+async fn clear_backups(app: tauri::AppHandle) -> Result<usize, String> {
+    store::clear_backups(&config_path(&app)?)
+}
+
 /// The text of one backup, to show and compare.
 #[tauri::command]
 async fn read_backup(app: tauri::AppHandle, name: String) -> Result<String, String> {
@@ -487,7 +493,8 @@ pub fn run() {
             list_backups,
             read_backup,
             restore_backup,
-            move_block
+            move_block,
+            clear_backups
         ])
         .setup(|app| {
             app.set_menu(menu_with_about(app.handle())?)?;
