@@ -146,7 +146,7 @@ Download the file for your system from
 | Debian, Ubuntu | `.deb` | `sudo apt install ./<file>.deb` |
 | Fedora, RHEL, openSUSE | `.rpm` | `sudo dnf install ./<file>.rpm` |
 | Other Linux | `.AppImage` | `chmod +x` the file, then run it |
-| Windows 10 and 11 (x64) | `.msi` or `-setup.exe` | Run it. The app is not signed yet, so SmartScreen asks first: More info > Run anyway |
+| Windows 10 and 11 (x64) | `.msi` or `-setup.exe` | Run it. For a new release SmartScreen can ask first: More info > Run anyway |
 
 Linux files are for x86_64 (`amd64`, `x86_64`) and ARM64 (`arm64`,
 `aarch64`). Choose the one for your CPU (`uname -m`).
