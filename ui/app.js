@@ -27,6 +27,15 @@ let selected = null;
 let editing = null;
 let confirmingDelete = false;
 
+// "user@host" that ssh connects to. Without HostName, ssh uses the alias,
+// which is only a real host name for a single Host pattern with no wildcards.
+function connectTarget(entry) {
+  const user = value(entry.settings, "User");
+  const plainAlias = entry.kind === "Host" && !/[\s*?!,]/.test(entry.name);
+  const host = value(entry.settings, "HostName") || (user && plainAlias ? entry.name : "");
+  return host && user ? `${user}@${host}` : host;
+}
+
 function make(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -102,8 +111,8 @@ function renderList() {
     if (entry.kind === "Match") item.append(make("span", "kind", entry.kind));
     const text = make("span", "text");
     text.append(make("span", nameClass, entry.name));
-    const hostName = value(entry.settings, "HostName");
-    if (hostName) text.append(make("span", "sub", hostName));
+    const target = connectTarget(entry);
+    if (target) text.append(make("span", "sub", target));
     item.append(text);
     item.addEventListener("click", () => select(entry.id));
     list.append(item);
