@@ -40,16 +40,46 @@ struct BlockView {
     kind: &'static str,
     pattern: String,
     settings: Vec<Setting>,
+    /// The name from a `# group: <name>` comment above the block.
+    group_comment: Option<String>,
 }
 
-impl From<&Block> for BlockView {
-    fn from(block: &Block) -> Self {
+impl BlockView {
+    fn new(config: &SshConfig, index: usize) -> Self {
+        let block = &config.blocks()[index];
         BlockView {
             kind: if block.is_host() { "Host" } else { "Match" },
             pattern: block.pattern().to_string(),
             settings: block.directives().map(Setting::from).collect(),
+            group_comment: config
+                .comments_above(index)
+                .into_iter()
+                .find_map(group_from_comment)
+                .map(str::to_string),
         }
     }
+}
+
+/// Where a block's group is stored. The user picks this in the UI.
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum GroupMode {
+    /// A `# group: <name>` comment above the block. OpenSSH ignores it.
+    Comment,
+    /// A `Tag <name>` directive in the block. Needs OpenSSH 9.4 or later.
+    Tag,
+}
+
+const GROUP_PREFIX: &str = "group:";
+
+/// `# group: Work` gives `Some("Work")`.
+fn group_from_comment(text: &str) -> Option<&str> {
+    let rest = text.trim_start().strip_prefix('#')?.trim_start();
+    let prefix = rest.get(..GROUP_PREFIX.len())?;
+    prefix
+        .eq_ignore_ascii_case(GROUP_PREFIX)
+        .then(|| rest[GROUP_PREFIX.len()..].trim())
+        .filter(|name| !name.is_empty())
 }
 
 #[derive(Serialize)]
@@ -88,7 +118,9 @@ fn view(path: &Path, loaded: &store::Loaded) -> ConfigView {
         exists: loaded.exists,
         revision: store::revision(&loaded.text),
         global: config.global_directives().map(Setting::from).collect(),
-        blocks: config.blocks().iter().map(BlockView::from).collect(),
+        blocks: (0..config.blocks().len())
+            .map(|i| BlockView::new(&config, i))
+            .collect(),
         lossless: config.to_string() == loaded.text,
     }
 }
@@ -102,7 +134,8 @@ async fn load_config(app: tauri::AppHandle) -> Result<ConfigView, String> {
 }
 
 /// Save one block. `index` is the block's position in `ConfigView.blocks`,
-/// or `None` to add a new host.
+/// or `None` to add a new host. `group` is stored as `group_mode` says;
+/// an empty group removes it.
 #[tauri::command]
 async fn save_block(
     app: tauri::AppHandle,
@@ -110,9 +143,12 @@ async fn save_block(
     index: Option<usize>,
     pattern: String,
     settings: Vec<Setting>,
+    group: String,
+    group_mode: GroupMode,
 ) -> Result<SaveResult, String> {
     let pattern = clean_pattern(&pattern)?;
     let settings = clean_settings(settings)?;
+    let group = clean_group(&group, group_mode)?;
 
     edit(&app, &revision, |config| {
         let index = match index {
@@ -124,13 +160,45 @@ async fn save_block(
                 index
             }
         };
-        let block = config.block_mut(index).expect("index was checked");
-        if block.pattern() != pattern {
-            block.set_pattern(&pattern);
-        }
-        apply_settings(block, &settings);
+        apply_block(
+            config,
+            index,
+            &pattern,
+            settings,
+            group.as_deref(),
+            group_mode,
+        );
         Ok(Some(index))
     })
+}
+
+fn apply_block(
+    config: &mut SshConfig,
+    index: usize,
+    pattern: &str,
+    mut settings: Vec<Setting>,
+    group: Option<&str>,
+    group_mode: GroupMode,
+) {
+    if let GroupMode::Tag = group_mode {
+        // The group is the Tag. Put it in the settings, so an existing Tag
+        // line changes in place.
+        settings.retain(|s| !s.keyword.eq_ignore_ascii_case("Tag"));
+        settings.extend(group.map(|g| Setting {
+            keyword: "Tag".into(),
+            value: g.into(),
+        }));
+    }
+    let block = config.block_mut(index).expect("index was checked");
+    if block.pattern() != pattern {
+        block.set_pattern(pattern);
+    }
+    apply_settings(block, &settings);
+    if let GroupMode::Comment = group_mode {
+        let comment = group.map(|g| format!("# {GROUP_PREFIX} {g}"));
+        let is_group = |t: &str| group_from_comment(t).is_some();
+        config.set_comment_above(index, is_group, comment.as_deref());
+    }
 }
 
 /// Delete the block at `index`.
@@ -226,6 +294,21 @@ fn clean_pattern(pattern: &str) -> Result<String, String> {
     Ok(pattern.to_string())
 }
 
+/// An empty group means "no group". A Tag takes one word.
+fn clean_group(group: &str, mode: GroupMode) -> Result<Option<String>, String> {
+    let group = group.trim();
+    if group.is_empty() {
+        return Ok(None);
+    }
+    if group.contains(['\n', '\r']) {
+        return Err("The group name must be on one line.".into());
+    }
+    if matches!(mode, GroupMode::Tag) && group.contains(char::is_whitespace) {
+        return Err("A Tag group name cannot have spaces.".into());
+    }
+    Ok(Some(group.to_string()))
+}
+
 /// Trim each setting, remove empty rows, and reject values that would
 /// break the file.
 fn clean_settings(settings: Vec<Setting>) -> Result<Vec<Setting>, String> {
@@ -310,6 +393,61 @@ mod tests {
         assert_eq!(new_host_index(&config), 1);
         let config = SshConfig::parse("Host a\n");
         assert_eq!(new_host_index(&config), 1);
+    }
+
+    #[test]
+    fn group_comment_is_read_and_written() {
+        assert_eq!(group_from_comment("# group: Work"), Some("Work"));
+        assert_eq!(group_from_comment("  #Group:  Home lab "), Some("Home lab"));
+        assert_eq!(group_from_comment("# group:"), None);
+        assert_eq!(group_from_comment("# grouping"), None);
+
+        let text = "Host a\n    User x\n\nHost b\n";
+        let mut config = SshConfig::parse(text);
+        let settings = || vec![setting("User", "x")];
+        apply_block(
+            &mut config,
+            0,
+            "a",
+            settings(),
+            Some("Work"),
+            GroupMode::Comment,
+        );
+        assert_eq!(config.to_string(), format!("# group: Work\n{text}"));
+        assert_eq!(
+            BlockView::new(&config, 0).group_comment.as_deref(),
+            Some("Work")
+        );
+        assert_eq!(BlockView::new(&config, 1).group_comment, None);
+
+        apply_block(&mut config, 0, "a", settings(), None, GroupMode::Comment);
+        assert_eq!(config.to_string(), text);
+    }
+
+    #[test]
+    fn group_tag_changes_in_place() {
+        let text = "Host a\n    Tag old\n    User x\n";
+        let mut config = SshConfig::parse(text);
+        // The UI does not send the Tag as a setting in Tag mode.
+        let settings = || vec![setting("User", "x")];
+        apply_block(&mut config, 0, "a", settings(), Some("new"), GroupMode::Tag);
+        assert_eq!(config.to_string(), text.replace("old", "new"));
+
+        apply_block(&mut config, 0, "a", settings(), None, GroupMode::Tag);
+        assert_eq!(config.to_string(), "Host a\n    User x\n");
+    }
+
+    #[test]
+    fn clean_group_rules() {
+        assert_eq!(clean_group("  ", GroupMode::Tag).unwrap(), None);
+        assert_eq!(
+            clean_group(" Home lab ", GroupMode::Comment)
+                .unwrap()
+                .as_deref(),
+            Some("Home lab")
+        );
+        assert!(clean_group("Home lab", GroupMode::Tag).is_err());
+        assert!(clean_group("a\nHost evil", GroupMode::Comment).is_err());
     }
 
     #[test]

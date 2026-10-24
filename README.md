@@ -4,7 +4,8 @@ A free, open-source desktop app for macOS and Linux that manages your
 `~/.ssh/config` file and SSH keys. Made by ReactIoT.
 
 **Status:** early development. You can view, add, edit and delete `Host`
-and `Match` blocks. Global settings are read-only for now.
+and `Match` blocks, and sort and group them. Global settings are read-only
+for now.
 
 ![SSH Cfg Mgr showing a list of hosts](docs/screenshot.png)
 
@@ -31,6 +32,19 @@ keeps the link.
 
 New hosts go before `Host *`, because OpenSSH uses the first value it
 finds for each keyword.
+
+## Host groups
+
+You can put each `Host` or `Match` block in a group. The sidebar shows
+the groups as sections. Choose where the app stores a group at the
+bottom of the sidebar:
+
+| Setting | Stored as | Notes |
+|---|---|---|
+| `# group: comment` (default) | `# group: Work` on the line above the block | OpenSSH ignores comments. Works with every OpenSSH version. |
+| Tag | `Tag work` in the block | One word. Needs OpenSSH 9.4 or later. You can use `Match tagged work` for settings that apply to the whole group. |
+
+The setting and the sort order are kept on your computer, not in the config.
 
 ## Goals
 

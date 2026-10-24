@@ -27,10 +27,23 @@
       <aside id="sidebar" class="sidebar">
         <div class="sidebar-tools">
           <input id="search" type="search" placeholder="Filter hosts" autocomplete="off" spellcheck="false" />
-          <button id="new-host" type="button" class="primary">New host</button>
+          <select id="sort" aria-label="Sort hosts">
+            <option value="file">File order</option>
+            <option value="name">Name A–Z</option>
+          </select>
+          <button id="new-host" type="button" class="primary add" aria-label="New host" title="New host">+</button>
         </div>
         <ul id="list" class="list" role="listbox" aria-label="Hosts"></ul>
-        <p id="count" class="count"></p>
+        <div class="sidebar-foot">
+          <p id="count" class="count"></p>
+          <label class="group-mode">
+            Groups
+            <select id="group-mode">
+              <option value="comment"># group: comment</option>
+              <option value="tag">Tag (OpenSSH 9.4+)</option>
+            </select>
+          </label>
+        </div>
       </aside>
 
       <section class="detail">
@@ -40,5 +53,6 @@
     </main>
 
     <datalist id="keywords"></datalist>
+    <datalist id="groups"></datalist>
   </body>
 </html>

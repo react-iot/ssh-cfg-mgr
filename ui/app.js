@@ -27,6 +27,24 @@ let selected = null;
 let editing = null;
 let confirmingDelete = false;
 
+// View preferences, kept per user in this app's local storage. Storage can
+// fail (private mode, cleared data); the defaults work without it.
+const prefs = { groupMode: "comment", sort: "file" };
+try {
+  Object.assign(prefs, JSON.parse(localStorage.getItem("prefs") || "{}"));
+} catch {}
+
+function savePrefs() {
+  try {
+    localStorage.setItem("prefs", JSON.stringify(prefs));
+  } catch {}
+}
+
+// The group of a block: a "# group: <name>" comment above it, or its Tag.
+function groupOf(block) {
+  return prefs.groupMode === "tag" ? value(block.settings, "Tag") : block.group_comment || "";
+}
+
 // "user@host" that ssh connects to. Without HostName, ssh uses the alias,
 // which is only a real host name for a single Host pattern with no wildcards.
 function connectTarget(entry) {
@@ -66,12 +84,34 @@ function value(settings, keyword) {
 function entries() {
   const list = [];
   if (config.global.length > 0) {
-    list.push({ id: GLOBAL_ID, kind: "", name: "Global settings", settings: config.global });
+    list.push({ id: GLOBAL_ID, kind: "", name: "Global settings", settings: config.global, group: "" });
   }
   config.blocks.forEach((block, index) => {
-    list.push({ id: String(index), kind: block.kind, name: block.pattern, settings: block.settings });
+    list.push({
+      id: String(index),
+      kind: block.kind,
+      name: block.pattern,
+      settings: block.settings,
+      group: groupOf(block),
+    });
   });
   return list;
+}
+
+const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+
+// Blocks in display order, as [group name, entries] pairs. Global settings
+// come first with no group, blocks with no group come last.
+function grouped(blocks) {
+  if (prefs.sort === "name") blocks = [...blocks].sort((a, b) => byName(a.name, b.name));
+  const groups = new Map();
+  for (const entry of blocks) {
+    if (!groups.has(entry.group)) groups.set(entry.group, []);
+    groups.get(entry.group).push(entry);
+  }
+  const named = [...groups.keys()].filter((g) => g);
+  if (prefs.sort === "name") named.sort(byName);
+  return [...named, ""].filter((g) => groups.has(g)).map((g) => [g, groups.get(g)]);
 }
 
 // ---- Notices ----
@@ -98,24 +138,21 @@ function renderList() {
   const all = entries();
   const shown = all.filter((entry) => {
     if (!filter) return true;
-    const text = [entry.name, value(entry.settings, "HostName"), value(entry.settings, "User")];
+    const text = [entry.name, entry.group, value(entry.settings, "HostName"), value(entry.settings, "User")];
     return text.join(" ").toLowerCase().includes(filter);
   });
 
-  for (const entry of shown) {
-    const item = make("li");
-    item.setAttribute("role", "option");
-    item.setAttribute("aria-selected", String(entry.id === selected));
-    const nameClass = entry.id === GLOBAL_ID ? "name plain" : "name";
-    // Host is the default block kind, so only Match blocks get a label.
-    if (entry.kind === "Match") item.append(make("span", "kind", entry.kind));
-    const text = make("span", "text");
-    text.append(make("span", nameClass, entry.name));
-    const target = connectTarget(entry);
-    if (target) text.append(make("span", "sub", target));
-    item.append(text);
-    item.addEventListener("click", () => select(entry.id));
-    list.append(item);
+  const global = shown.filter((e) => e.id === GLOBAL_ID);
+  const sections = grouped(shown.filter((e) => e.id !== GLOBAL_ID));
+  const hasGroups = sections.some(([group]) => group);
+  for (const entry of global) list.append(listItem(entry));
+  for (const [group, members] of sections) {
+    if (hasGroups) {
+      const head = make("li", "group-head", group || "No group");
+      head.setAttribute("role", "presentation");
+      list.append(head);
+    }
+    for (const entry of members) list.append(listItem(entry));
   }
 
   const hosts = config.blocks.filter((b) => b.kind === "Host").length;
@@ -125,6 +162,22 @@ function renderList() {
     : `${plural(hosts, "host")}, ${plural(matches, "match block")}`;
 }
 
+function listItem(entry) {
+  const item = make("li");
+  item.setAttribute("role", "option");
+  item.setAttribute("aria-selected", String(entry.id === selected));
+  const nameClass = entry.id === GLOBAL_ID ? "name plain" : "name";
+  // Host is the default block kind, so only Match blocks get a label.
+  if (entry.kind === "Match") item.append(make("span", "kind", entry.kind));
+  const text = make("span", "text");
+  text.append(make("span", nameClass, entry.name));
+  const target = connectTarget(entry);
+  if (target) text.append(make("span", "sub", target));
+  item.append(text);
+  item.addEventListener("click", () => select(entry.id));
+  return item;
+}
+
 // ---- Detail: view ----
 
 function renderView(detail) {
@@ -132,7 +185,7 @@ function renderView(detail) {
   if (!entry) {
     const text = config.exists
       ? "Select a host to see its settings."
-      : "There is no SSH config file yet. Click New host to make one.";
+      : "There is no SSH config file yet. Click + to add a host.";
     detail.append(make("p", "empty", text));
     return;
   }
@@ -166,7 +219,7 @@ function renderView(detail) {
   const lead =
     entry.id === GLOBAL_ID
       ? "These settings are before the first Host or Match line. They apply to all hosts. This version cannot edit them."
-      : `${plural(entry.settings.length, "setting")}. The first value of each keyword is the one OpenSSH uses.`;
+      : `${entry.group ? `Group: ${entry.group}. ` : ""}${plural(entry.settings.length, "setting")}. The first value of each keyword is the one OpenSSH uses.`;
   detail.append(make("p", "lead", lead));
 
   if (entry.settings.length === 0) {
@@ -196,7 +249,11 @@ function startEdit(entry) {
         index: Number(entry.id),
         kind: entry.kind,
         pattern: entry.name,
-        settings: entry.settings.map((s) => ({ ...s })),
+        // In Tag mode the Group field is the Tag, so it is not a setting row.
+        settings: entry.settings
+          .filter((s) => prefs.groupMode !== "tag" || s.keyword.toLowerCase() !== "tag")
+          .map((s) => ({ ...s })),
+        group: entry.group,
       }
     : {
         index: null,
@@ -206,6 +263,7 @@ function startEdit(entry) {
           { keyword: "HostName", value: "" },
           { keyword: "User", value: "" },
         ],
+        group: "",
       };
   if (!entry) selected = NEW_ID;
   render();
@@ -248,6 +306,26 @@ function renderEdit(detail) {
       make("p", "hint", "The name you type after ssh. Use * as a wildcard and ! to exclude. Separate patterns with spaces."),
     );
   }
+
+  const groupLabel = make("label", "field");
+  groupLabel.append(make("span", "", "Group"));
+  const group = make("input");
+  group.value = editing.group;
+  group.placeholder = "Optional";
+  group.setAttribute("list", "groups");
+  group.spellcheck = false;
+  group.addEventListener("input", () => (editing.group = group.value));
+  groupLabel.append(group);
+  form.append(groupLabel);
+  form.append(
+    make(
+      "p",
+      "hint",
+      prefs.groupMode === "tag"
+        ? "Saved as a Tag line in this block. One word. Needs OpenSSH 9.4 or later."
+        : "Saved as a \"# group:\" comment above this block. OpenSSH ignores it.",
+    ),
+  );
 
   const rows = make("div", "settings");
   rows.append(make("span", "col-head", "Keyword"), make("span", "col-head", "Value"), make("span"));
@@ -312,6 +390,8 @@ async function save() {
       index: editing.index,
       pattern: editing.pattern,
       settings: editing.settings,
+      group: editing.group,
+      groupMode: prefs.groupMode,
     });
     applyResult(result, "Saved.");
   } catch (error) {
@@ -336,6 +416,8 @@ async function remove(index) {
 
 function render() {
   renderList();
+  const names = [...new Set(entries().map((e) => e.group).filter(Boolean))].sort(byName);
+  el("groups").replaceChildren(...names.map((name) => Object.assign(make("option"), { value: name })));
   const detail = el("detail");
   detail.replaceChildren();
   if (editing) renderEdit(detail);
@@ -378,6 +460,18 @@ for (const keyword of KEYWORDS) {
 }
 
 el("search").addEventListener("input", renderList);
+for (const [key, id] of [["sort", "sort"], ["groupMode", "group-mode"]]) {
+  const select = el(id);
+  // An unknown stored value falls back to the first option.
+  if ([...select.options].some((o) => o.value === prefs[key])) select.value = prefs[key];
+  else prefs[key] = select.value;
+  select.addEventListener("change", () => {
+    prefs[key] = select.value;
+    savePrefs();
+    // A selected block can change group, but it stays selected.
+    if (config) render();
+  });
+}
 el("reload").addEventListener("click", () => {
   clearNotice();
   load();

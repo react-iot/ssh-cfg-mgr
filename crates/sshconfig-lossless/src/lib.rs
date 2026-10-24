@@ -381,6 +381,71 @@ impl SshConfig {
         index.and_then(|i| self.remove_block(i)).is_some()
     }
 
+    /// The comment lines directly above the block at `index`, as written
+    /// (with `#` and indent). These are the comments that move and are
+    /// deleted with the block.
+    pub fn comments_above(&self, index: usize) -> Vec<&str> {
+        if index >= self.blocks.len() {
+            return Vec::new();
+        }
+        let lines = match index {
+            0 => &self.global,
+            _ => &self.blocks[index - 1].body,
+        };
+        lines[lines.len() - comment_suffix_len(lines)..]
+            .iter()
+            .filter_map(|line| match &line.kind {
+                LineKind::Comment(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Change one comment line directly above the block at `index`: the
+    /// first one for which `is_match` is true. `Some(text)` replaces it, or
+    /// adds `text` as the last line above the block if none matches.
+    /// `None` removes it. Returns false if there is no block at `index`.
+    ///
+    /// # Panics
+    ///
+    /// If `text` is not one comment line (it must start with `#` and have
+    /// no line break). Anything else would change the config.
+    pub fn set_comment_above(
+        &mut self,
+        index: usize,
+        is_match: impl Fn(&str) -> bool,
+        text: Option<&str>,
+    ) -> bool {
+        if let Some(text) = text {
+            assert!(
+                text.trim_start().starts_with('#') && !text.contains(['\n', '\r']),
+                "not one comment line: {text:?}"
+            );
+        }
+        if index >= self.blocks.len() {
+            return false;
+        }
+        let eol = self.eol_style();
+        let lines = self.lines_before_mut(index);
+        let start = lines.len() - comment_suffix_len(lines);
+        let found = (start..lines.len())
+            .find(|&i| matches!(&lines[i].kind, LineKind::Comment(t) if is_match(t)));
+        // A line above a block always ends with a newline, because the block
+        // header comes after it.
+        match (found, text) {
+            (Some(i), Some(text)) => lines[i].kind = LineKind::Comment(text.to_string()),
+            (Some(i), None) => {
+                lines.remove(i);
+            }
+            (None, Some(text)) => lines.push(Line {
+                kind: LineKind::Comment(text.to_string()),
+                eol,
+            }),
+            (None, None) => {}
+        }
+        true
+    }
+
     /// The line ending this file uses: `\r\n` or `\n`.
     fn eol_style(&self) -> String {
         self.global
@@ -415,8 +480,13 @@ impl SshConfig {
 
 /// Remove the comment lines at the end of `lines` and return them.
 fn take_comment_suffix(lines: &mut Vec<Line>) -> Vec<Line> {
-    let count = lines.iter().rev().take_while(|l| l.is_comment()).count();
+    let count = comment_suffix_len(lines);
     lines.split_off(lines.len() - count)
+}
+
+/// How many comment lines are at the end of `lines`.
+fn comment_suffix_len(lines: &[Line]) -> usize {
+    lines.iter().rev().take_while(|l| l.is_comment()).count()
 }
 
 impl fmt::Display for SshConfig {

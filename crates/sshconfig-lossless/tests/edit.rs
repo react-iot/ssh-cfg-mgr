@@ -162,3 +162,61 @@ fn remove_last_block_keeps_missing_final_newline() {
 fn remove_block_out_of_range() {
     assert!(parse().remove_block(9).is_none());
 }
+
+fn is_group(text: &str) -> bool {
+    text.starts_with("# group:")
+}
+
+#[test]
+fn comments_above_are_the_comments_that_move_with_the_block() {
+    let config = parse();
+    assert_eq!(config.comments_above(0), ["# Gateways"]);
+    assert!(config.comments_above(1).is_empty());
+    assert_eq!(config.comments_above(2), ["# Defaults for all hosts"]);
+    assert!(config.comments_above(3).is_empty());
+}
+
+#[test]
+fn set_comment_above_adds_replaces_and_removes() {
+    let mut config = parse();
+
+    assert!(config.set_comment_above(1, is_group, Some("# group: Edge")));
+    let added = SAMPLE.replace("\nHost edge\n", "\n# group: Edge\nHost edge\n");
+    assert_eq!(config.to_string(), added);
+    assert_eq!(config.comments_above(1), ["# group: Edge"]);
+
+    config.set_comment_above(1, is_group, Some("# group: Prod"));
+    assert_eq!(config.to_string(), added.replace("Edge", "Prod"));
+
+    config.set_comment_above(1, is_group, None);
+    assert_eq!(config.to_string(), SAMPLE);
+
+    // Other comments above the block stay.
+    config.set_comment_above(0, is_group, Some("# group: Gw"));
+    assert_eq!(config.comments_above(0), ["# Gateways", "# group: Gw"]);
+    config.set_comment_above(0, is_group, None);
+    assert_eq!(config.to_string(), SAMPLE);
+
+    assert!(!config.set_comment_above(9, is_group, Some("# group: X")));
+}
+
+#[test]
+fn comment_above_goes_with_insert_and_delete() {
+    let mut config = parse();
+    config.set_comment_above(2, is_group, Some("# group: Base"));
+    config.insert_host(2, "new");
+    assert!(config.comments_above(2).is_empty());
+    assert_eq!(
+        config.comments_above(3),
+        ["# Defaults for all hosts", "# group: Base"]
+    );
+
+    config.remove_block(3);
+    assert!(!config.to_string().contains("# group: Base"));
+}
+
+#[test]
+#[should_panic(expected = "not one comment line")]
+fn set_comment_above_rejects_non_comments() {
+    parse().set_comment_above(0, is_group, Some("Host evil"));
+}

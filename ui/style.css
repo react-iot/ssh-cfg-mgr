@@ -93,9 +93,10 @@ button.primary:hover { filter: brightness(1.08); }
 button.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 550; }
 button.icon { padding: 4px 10px; font-size: 16px; line-height: 1; color: var(--muted); }
 button.icon:hover { color: var(--danger); border-color: var(--danger); }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.add { padding: 2px 11px; font-size: 20px; line-height: 1; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-input {
+input, select {
   font: inherit;
   padding: 6px 10px;
   border: 1px solid var(--border);
@@ -117,10 +118,12 @@ input.mono { font-family: var(--mono); font-size: 13px; }
 }
 
 .sidebar-tools { display: flex; gap: 8px; margin: 12px; }
-#search { flex: 1; background: var(--bg); }
+#search, #sort { background: var(--bg); }
+#search { flex: 1; }
 
 .sidebar.locked .list,
-.sidebar.locked .sidebar-tools { opacity: 0.5; pointer-events: none; }
+.sidebar.locked .sidebar-tools,
+.sidebar.locked .sidebar-foot { opacity: 0.5; pointer-events: none; }
 
 .list { flex: 1; margin: 0; padding: 0 6px; list-style: none; overflow-y: auto; }
 
@@ -133,6 +136,8 @@ input.mono { font-family: var(--mono); font-size: 13px; }
   cursor: pointer;
 }
 .list li:hover { background: var(--bg); }
+.list li.group-head { display: block; padding: 12px 10px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); cursor: default; }
+.list li.group-head:hover { background: none; }
 .list li[aria-selected="true"] { background: var(--accent-soft); }
 
 .kind { font-size: 11px; color: var(--muted); flex: none; }
@@ -141,7 +146,10 @@ input.mono { font-family: var(--mono); font-size: 13px; }
 .text { display: flex; flex-direction: column; min-width: 0; }
 .sub { color: var(--muted); font-family: var(--mono); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.count { margin: 0; padding: 8px 16px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); }
+.sidebar-foot { display: flex; flex-direction: column; gap: 6px; padding: 8px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+.count { margin: 0; }
+.group-mode { display: flex; align-items: center; gap: 8px; }
+.group-mode select { flex: 1; padding: 3px 6px; font-size: 12px; }
 
 .detail { flex: 1; padding: 24px 28px; overflow-y: auto; }
 .detail-head { display: flex; align-items: flex-start; gap: 16px; max-width: 760px; }
